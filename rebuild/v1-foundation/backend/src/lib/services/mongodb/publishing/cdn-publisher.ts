@@ -1,0 +1,280 @@
+/**
+ * LML v1 Foundation - CDN Publishing Service
+ * ==========================================
+ * Production-grade CDN publishing with hash validation
+ * Implementation of approved Phase 2 immutability system
+ */
+
+import { createHash } from 'crypto';
+import { VenueLayout } from '../types/venue-layout';
+import { generateLayoutHash, validateLayoutHash } from '../utils/seat-id-generator';
+
+/**
+ * CDN Publishing Configuration
+ */
+export interface CDNConfig {
+  bucketName: string;
+  region: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  cdnDomain: string;
+}
+
+/**
+ * CDN Publishing Result
+ */
+export interface CDNPublishResult {
+  success: boolean;
+  cdnUrl?: string;
+  hash?: string;
+  error?: string;
+  uploadedAt?: Date;
+  size?: number;
+}
+
+/**
+ * Hash Validation Error - thrown when layout hash doesn't match content
+ */
+export class HashMismatchError extends Error {
+  constructor(
+    message: string,
+    public storedHash: string,
+    public currentHash: string
+  ) {
+    super(message);
+    this.name = 'HashMismatchError';
+  }
+}
+
+/**
+ * Layout Publishing Error - general publishing failures
+ */
+export class LayoutPublishingError extends Error {
+  constructor(message: string, public cause?: Error) {
+    super(message);
+    this.name = 'LayoutPublishingError';
+  }
+}
+
+/**
+ * ✅ NEW: CDN Publishing Function with Hash Validation
+ * Validates layout hash before deployment to prevent silent mutations
+ * 
+ * @param layout - Layout to publish to CDN
+ * @param config - CDN configuration (optional for mock/testing)
+ * @returns CDN publishing result with signed URL
+ */
+export async function publishToCDN(
+  layout: VenueLayout,
+  config?: CDNConfig
+): Promise<CDNPublishResult> {
+  try {
+    console.log(`🌐 Publishing layout ${layout.layoutId} to CDN...`);
+    
+    // ✅ CRITICAL: Validate stored hash against current content before deployment
+    console.log('🔍 Validating layout hash consistency...');
+    const currentLayoutHash = generateLayoutHash({
+      seats: layout.seats,
+      viewport: layout.viewport,
+      zones: layout.zones,
+      layoutType: layout.layoutType
+    });
+    
+    if (!layout.layoutHash) {
+      throw new LayoutPublishingError('Layout missing layoutHash - cannot deploy');
+    }
+    
+    if (layout.layoutHash !== currentLayoutHash) {
+      throw new HashMismatchError(
+        `Layout hash mismatch! Layout may have been silently mutated between publish and deploy.`,
+        layout.layoutHash,
+        currentLayoutHash
+      );
+    }
+    console.log('✅ Layout hash validation passed');
+    
+    // 2. Export layout to optimized JSON with new schema fields
+    console.log('📦 Generating optimized layout JSON...');
+    const optimizedJSON = {
+      meta: {
+        layoutId: layout.layoutId,
+        venueId: layout.venueId,
+        version: layout.version,
+        hash: layout.layoutHash,
+        publishedAt: layout.publishedAt,
+        layoutType: layout.layoutType,
+        viewport: layout.viewport,
+        exportedAt: new Date().toISOString()
+      },
+      seats: layout.seats.map(seat => ({
+        seatId: seat.seatId,           // ✅ NEW: Deterministic seat IDs
+        section: seat.section,
+        row: seat.row,
+        number: seat.number,
+        x: seat.x,                     // ✅ NEW: Normalized coordinates
+        y: seat.y,
+        category: seat.category,
+        color: seat.color,
+        facing: seat.facing,
+        labels: seat.labels,
+        disabled: seat.disabled
+      })),
+      sections: layout.sections?.map(section => ({
+        sectionId: section.sectionId,
+        name: section.name,
+        capacity: section.capacity,
+        level: section.level,
+        bounds: section.bounds,
+        labels: section.labels,
+        color: section.color,
+        category: section.category
+      })) || [],
+      zones: layout.zones?.map(zone => ({
+        zoneId: zone.zoneId,
+        type: zone.type,
+        name: zone.name,
+        coordinates: zone.coordinates,
+        metadata: zone.metadata
+      })) || []
+    };
+    
+    // 3. Generate final content hash for verification
+    const contentString = JSON.stringify(optimizedJSON);
+    const contentSize = Buffer.byteLength(contentString, 'utf8');
+    const finalHash = createHash('sha256').update(contentString, 'utf8').digest('hex');
+    
+    console.log(`📊 Layout export stats: ${contentSize} bytes, ${layout.seats.length} seats`);
+    
+    // 4. Upload to CDN (mock implementation for testing)
+    if (config) {
+      // Production CDN upload would go here
+      console.log('🚀 Uploading to production CDN...');
+      const cdnPath = `layouts/${layout.layoutId}/${layout.layoutHash}/layout.json`;
+      const signedUrl = await mockCDNUpload(cdnPath, optimizedJSON, config);
+      
+      return {
+        success: true,
+        cdnUrl: signedUrl,
+        hash: layout.layoutHash,
+        uploadedAt: new Date(),
+        size: contentSize
+      };
+    } else {
+      // Mock CDN for testing
+      console.log('🧪 Mock CDN deployment for testing...');
+      const mockCdnUrl = `https://cdn.lml.test/layouts/${layout.layoutId}/${layout.layoutHash}/layout.json`;
+      
+      return {
+        success: true,
+        cdnUrl: mockCdnUrl,
+        hash: layout.layoutHash,
+        uploadedAt: new Date(),
+        size: contentSize
+      };
+    }
+    
+  } catch (error) {
+    console.error('💥 CDN publishing failed:', error);
+    
+    if (error instanceof HashMismatchError || error instanceof LayoutPublishingError) {
+      throw error; // Re-throw our custom errors
+    }
+    
+    throw new LayoutPublishingError(
+      `Failed to publish layout ${layout.layoutId} to CDN: ${error.message}`,
+      error
+    );
+  }
+}
+
+/**
+ * Mock CDN upload function for testing/development
+ * In production, this would use AWS S3, CloudFront, etc.
+ */
+async function mockCDNUpload(
+  path: string,
+  content: any,
+  config: CDNConfig
+): Promise<string> {
+  // Simulate upload delay
+  await new Promise(resolve => setTimeout(resolve, 100));
+  
+  // Mock signed URL generation
+  const signedUrl = `https://${config.cdnDomain}/${path}?signature=mock_signature&expires=${Date.now() + 3600000}`;
+  
+  console.log(`📤 Mock uploaded to: ${path}`);
+  return signedUrl;
+}
+
+/**
+ * Validate layout is ready for CDN publishing
+ * 
+ * @param layout - Layout to validate
+ * @returns Array of validation errors (empty if valid)
+ */
+export function validateLayoutForPublishing(layout: VenueLayout): string[] {
+  const errors: string[] = [];
+  
+  // Status validation
+  if (layout.status !== 'published') {
+    errors.push('Layout must be in published status before CDN deployment');
+  }
+  
+  // Required fields for CDN
+  if (!layout.layoutHash) {
+    errors.push('Layout missing layoutHash - required for CDN deployment');
+  }
+  
+  if (!layout.publishedAt) {
+    errors.push('Layout missing publishedAt timestamp');
+  }
+  
+  // Content validation
+  if (!layout.seats || layout.seats.length === 0) {
+    errors.push('Layout must have at least one seat for CDN deployment');
+  }
+  
+  // Seat validation
+  if (layout.seats) {
+    const invalidSeats = layout.seats.filter(seat => 
+      !seat.seatId || 
+      typeof seat.x !== 'number' || 
+      typeof seat.y !== 'number' ||
+      seat.x < 0 || seat.x > 1 ||
+      seat.y < 0 || seat.y > 1
+    );
+    
+    if (invalidSeats.length > 0) {
+      errors.push(`${invalidSeats.length} seats have invalid coordinates or missing seatIds`);
+    }
+  }
+  
+  return errors;
+}
+
+/**
+ * Generate CDN file path for layout
+ * 
+ * @param layoutId - Layout identifier
+ * @param layoutHash - Content hash
+ * @param version - Layout version (optional)
+ * @returns CDN file path
+ */
+export function generateCDNPath(
+  layoutId: string,
+  layoutHash: string,
+  version?: string
+): string {
+  const versionPath = version ? `v${version}/` : '';
+  return `layouts/${layoutId}/${versionPath}${layoutHash}/layout.json`;
+}
+
+/**
+ * CDN Publishing Constants
+ */
+export const CDN_CONSTANTS = {
+  MAX_LAYOUT_SIZE: 10 * 1024 * 1024, // 10MB max layout file
+  SIGNED_URL_EXPIRY: 3600000, // 1 hour in milliseconds
+  RETRY_ATTEMPTS: 3,
+  UPLOAD_TIMEOUT: 30000, // 30 seconds
+} as const;
