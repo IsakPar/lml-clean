@@ -8,7 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getRedisClient } from '../db/redis';
-import { getConfig, getRateLimitConfig } from '../config';
+import { getAppConfig, getRateLimitConfig, isProduction, isStaging } from '../config';
 
 // ================================================
 // RATE LIMIT CONFIGURATION
@@ -170,7 +170,7 @@ export class RateLimiter {
     const now = Date.now();
     const cutoff = now - this.config.windowMs * 2; // Keep last 2 windows
     
-    for (const [key, _] of global.rateLimitMemory.entries()) {
+    for (const [key, _] of Array.from(global.rateLimitMemory.entries())) {
       const parts = key.split(':');
       const timestamp = parseInt(parts[parts.length - 1]) * this.config.windowMs;
       
@@ -258,6 +258,38 @@ export class RateLimiter {
 
     return response;
   }
+
+  // ================================================
+  // PUBLIC ACCESSORS
+  // ================================================
+
+  /**
+   * Get rate limit configuration
+   */
+  public getConfig(): RateLimitConfig {
+    return this.config;
+  }
+
+  /**
+   * Get Redis client instance
+   */
+  public getRedis(): any {
+    return this.redis;
+  }
+
+  /**
+   * Generate key for rate limiting
+   */
+  public generateKey(request: NextRequest): string {
+    return this.defaultKeyGenerator(request);
+  }
+
+  /**
+   * Check if headers should be added
+   */
+  public shouldAddHeaders(): boolean {
+    return this.config.headers ?? true;
+  }
 }
 
 // ================================================
@@ -278,7 +310,7 @@ export function createRateLimiter(config: Partial<RateLimitConfig> = {}) {
       const result = await rateLimiter.checkRateLimit(request);
 
       // Add rate limit headers to response
-      if (response && rateLimiter.config.headers) {
+      if (response && rateLimiter.shouldAddHeaders()) {
         const headers = rateLimiter.createHeaders(result);
         Object.entries(headers).forEach(([key, value]) => {
           response.headers.set(key, value);
@@ -287,7 +319,7 @@ export function createRateLimiter(config: Partial<RateLimitConfig> = {}) {
 
       // Check if rate limit exceeded
       if (!result.allowed) {
-        console.warn(`⚡ Rate limit exceeded for ${rateLimiter.defaultKeyGenerator(request)}`);
+        console.warn(`⚡ Rate limit exceeded for ${rateLimiter.generateKey(request)}`);
         return rateLimiter.createRateLimitResponse(result);
       }
 
@@ -347,8 +379,7 @@ export const expensiveRateLimiter = createRateLimiter({
  * Check if rate limiting is enabled
  */
 export function isRateLimitingEnabled(): boolean {
-  const config = getConfig();
-  return config.isProduction || config.isStaging;
+  return isProduction() || isStaging();
 }
 
 /**
@@ -364,9 +395,9 @@ export async function getRateLimitStatus(request: NextRequest): Promise<{
   
   return {
     enabled: isRateLimitingEnabled(),
-    redis: !!rateLimiter.redis,
-    key: rateLimiter.defaultKeyGenerator(request),
-    config: rateLimiter.config,
+    redis: !!rateLimiter.getRedis(),
+    key: rateLimiter.generateKey(request),
+    config: rateLimiter.getConfig(),
   };
 }
 

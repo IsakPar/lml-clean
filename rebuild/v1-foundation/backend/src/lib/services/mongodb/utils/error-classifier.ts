@@ -1,0 +1,609 @@
+/**
+ * Error Classifier Utility
+ * ========================
+ * Error classification, retry logic, and structured logging
+ */
+
+import { 
+  MongoDBServiceError,
+  ValidationError,
+  PublishingViolationError,
+  AccessDeniedError,
+  MongoWriteError,
+  MongoConnectionError,
+  ResourceNotFoundError,
+  ConcurrencyError,
+  DeploymentError,
+  classifyError,
+} from '../types/errors';
+import type { 
+  ErrorClassification,
+  ErrorCategory,
+  ErrorContext,
+  ErrorSeverity,
+} from '../types/errors';
+
+/**
+ * Log entry for structured error logging
+ */
+export interface ErrorLogEntry {
+  /** Unique identifier for this error occurrence */
+  errorId: string;
+  
+  /** Timestamp when error occurred */
+  timestamp: Date;
+  
+  /** Error classification */
+  classification: ErrorClassification;
+  
+  /** Original error details */
+  error: {
+    name: string;
+    message: string;
+    code?: string;
+    stack?: string;
+  };
+  
+  /** Contextual information */
+  context: ErrorContext;
+  
+  /** Retry information */
+  retry?: {
+    attempt: number;
+    maxRetries: number;
+    nextRetryAt?: Date;
+    successful?: boolean;
+  };
+  
+  /** Tags for filtering and aggregation */
+  tags: Record<string, string>;
+  
+  /** Severity level */
+  severity: ErrorSeverity;
+  
+  /** Whether this error should trigger alerts */
+  shouldAlert: boolean;
+}
+
+/**
+ * Retry configuration for different error types
+ */
+export interface RetryConfig {
+  /** Maximum number of retry attempts */
+  maxRetries: number;
+  
+  /** Base delay between retries in milliseconds */
+  baseDelayMs: number;
+  
+  /** Maximum delay between retries in milliseconds */
+  maxDelayMs: number;
+  
+  /** Exponential backoff multiplier */
+  backoffMultiplier: number;
+  
+  /** Whether to add random jitter to delays */
+  useJitter: boolean;
+  
+  /** Errors that should not be retried */
+  nonRetryableErrors: string[];
+}
+
+/**
+ * Result of error classification and logging
+ */
+export interface ErrorHandlingResult {
+  /** Whether the error should be retried */
+  shouldRetry: boolean;
+  
+  /** Delay before next retry (if applicable) */
+  retryDelayMs?: number;
+  
+  /** Generated error log entry */
+  logEntry: ErrorLogEntry;
+  
+  /** User-friendly error message */
+  userMessage: string;
+  
+  /** Error code for API responses */
+  errorCode: string;
+  
+  /** HTTP status code */
+  httpStatus: number;
+}
+
+/**
+ * Classify and log an error with context
+ */
+export function classifyAndLogError(
+  error: Error,
+  context: ErrorContext,
+  retryAttempt: number = 0,
+  maxRetries: number = 0
+): ErrorHandlingResult {
+  const errorId = generateErrorId();
+  const timestamp = new Date();
+  const classification = classifyError(error);
+  
+  // Determine retry eligibility
+  const shouldRetry = classification.retryable && retryAttempt < maxRetries;
+  const retryDelayMs = shouldRetry ? calculateRetryDelay(error, retryAttempt) : undefined;
+  
+  // Create log entry
+  const logEntry: ErrorLogEntry = {
+    errorId,
+    timestamp,
+    classification,
+    error: {
+      name: error.name,
+      message: error.message,
+      code: error instanceof MongoDBServiceError ? error.code : undefined,
+      stack: error.stack,
+    },
+    context: sanitizeContext(context),
+    retry: retryAttempt > 0 || shouldRetry ? {
+      attempt: retryAttempt,
+      maxRetries,
+      nextRetryAt: retryDelayMs ? new Date(Date.now() + retryDelayMs) : undefined,
+      successful: false,
+    } : undefined,
+    tags: generateErrorTags(error, context),
+    severity: classification.severity,
+    shouldAlert: classification.shouldAlert,
+  };
+  
+  // Generate user-friendly message
+  const userMessage = generateUserMessage(error, classification);
+  const errorCode = generateErrorCode(error);
+  const httpStatus = getHttpStatusCode(error);
+  
+  // Log the error
+  logError(logEntry);
+  
+  return {
+    shouldRetry,
+    retryDelayMs,
+    logEntry,
+    userMessage,
+    errorCode,
+    httpStatus,
+  };
+}
+
+/**
+ * Calculate retry delay with exponential backoff and jitter
+ */
+export function calculateRetryDelay(
+  error: Error,
+  retryAttempt: number,
+  config: Partial<RetryConfig> = {}
+): number {
+  const defaultConfig: RetryConfig = {
+    maxRetries: 3,
+    baseDelayMs: 1000,
+    maxDelayMs: 30000,
+    backoffMultiplier: 2,
+    useJitter: true,
+    nonRetryableErrors: [
+      'ValidationError',
+      'AccessDeniedError',
+      'PublishingViolationError',
+      'ResourceNotFoundError',
+    ],
+  };
+  
+  const finalConfig = { ...defaultConfig, ...config };
+  
+  // Check if error should not be retried
+  if (finalConfig.nonRetryableErrors.includes(error.constructor.name)) {
+    return 0;
+  }
+  
+  // Calculate exponential backoff delay
+  let delay = finalConfig.baseDelayMs * Math.pow(finalConfig.backoffMultiplier, retryAttempt);
+  
+  // Apply maximum delay cap
+  delay = Math.min(delay, finalConfig.maxDelayMs);
+  
+  // Add jitter to prevent thundering herd
+  if (finalConfig.useJitter) {
+    const jitterRange = delay * 0.1; // ±10% jitter
+    const jitter = (Math.random() - 0.5) * 2 * jitterRange;
+    delay += jitter;
+  }
+  
+  return Math.max(0, Math.round(delay));
+}
+
+/**
+ * Execute operation with automatic retry logic
+ */
+export async function executeWithRetry<T>(
+  operation: () => Promise<T>,
+  context: ErrorContext,
+  config: Partial<RetryConfig> = {}
+): Promise<T> {
+  const defaultConfig: RetryConfig = {
+    maxRetries: 3,
+    baseDelayMs: 1000,
+    maxDelayMs: 30000,
+    backoffMultiplier: 2,
+    useJitter: true,
+    nonRetryableErrors: [],
+  };
+  
+  const finalConfig = { ...defaultConfig, ...config };
+  let lastError: Error;
+  
+  for (let attempt = 0; attempt <= finalConfig.maxRetries; attempt++) {
+    try {
+      const result = await operation();
+      
+      // Log successful retry if there were previous failures
+      if (attempt > 0) {
+        const logEntry = createSuccessfulRetryLog(context, attempt, lastError!);
+        logError(logEntry);
+      }
+      
+      return result;
+      
+    } catch (error) {
+      lastError = error as Error;
+      
+      const handleResult = classifyAndLogError(
+        lastError,
+        context,
+        attempt,
+        finalConfig.maxRetries
+      );
+      
+      // If this is the last attempt or error is not retryable, throw
+      if (attempt === finalConfig.maxRetries || !handleResult.shouldRetry) {
+        throw error;
+      }
+      
+      // Wait before retrying
+      if (handleResult.retryDelayMs && handleResult.retryDelayMs > 0) {
+        await sleep(handleResult.retryDelayMs);
+      }
+    }
+  }
+  
+  throw lastError!;
+}
+
+/**
+ * Generate error tags for filtering and aggregation
+ */
+function generateErrorTags(error: Error, context: ErrorContext): Record<string, string> {
+  const tags: Record<string, string> = {
+    errorType: error.constructor.name,
+    severity: classifyError(error).severity,
+    category: classifyError(error).category,
+  };
+  
+  // Add context-based tags
+  if (context.userId) tags.userId = context.userId;
+  if (context.organizationId) tags.organizationId = context.organizationId;
+  if (context.endpoint) tags.endpoint = context.endpoint;
+  if (context.method) tags.method = context.method;
+  
+  // Add error-specific tags
+  if (error instanceof MongoDBServiceError) {
+    tags.errorCode = error.code;
+    tags.retryable = error.retryable.toString();
+  }
+  
+  if (error instanceof MongoWriteError) {
+    tags.mongoOperation = error.operation;
+    if (error.collection) tags.collection = error.collection;
+  }
+  
+  if (error instanceof AccessDeniedError) {
+    tags.deniedAction = error.action;
+    tags.requiredPermissions = error.requiredPermissions.join(',');
+  }
+  
+  return tags;
+}
+
+/**
+ * Generate user-friendly error message
+ */
+function generateUserMessage(error: Error, classification: ErrorClassification): string {
+  // Custom messages for known error types
+  if (error instanceof ValidationError) {
+    return `Invalid ${error.field}: ${error.rule || 'Please check the value and try again.'}`;
+  }
+  
+  if (error instanceof AccessDeniedError) {
+    return 'You do not have permission to perform this action.';
+  }
+  
+  if (error instanceof PublishingViolationError) {
+    return 'Cannot modify published content. Please create a new draft version.';
+  }
+  
+  if (error instanceof ResourceNotFoundError) {
+    return `${error.resourceType} not found.`;
+  }
+  
+  if (error instanceof MongoConnectionError) {
+    return 'Database temporarily unavailable. Please try again in a moment.';
+  }
+  
+  if (error instanceof ConcurrencyError) {
+    return 'This item was modified by another user. Please refresh and try again.';
+  }
+  
+  if (error instanceof DeploymentError) {
+    return `Deployment failed: ${error.message}`;
+  }
+  
+  // Default messages by severity
+  switch (classification.severity) {
+    case 'critical':
+      return 'A critical system error occurred. Our team has been notified.';
+    case 'error':
+      return 'An error occurred while processing your request. Please try again.';
+    case 'warning':
+      return 'Your request could not be completed. Please check your input and try again.';
+    case 'info':
+      return 'Request completed with warnings.';
+    default:
+      return 'An unexpected error occurred.';
+  }
+}
+
+/**
+ * Generate error code for API responses
+ */
+function generateErrorCode(error: Error): string {
+  if (error instanceof MongoDBServiceError) {
+    return error.code;
+  }
+  
+  // Generate code from error type
+  const errorName = error.constructor.name;
+  return errorName.replace(/Error$/, '').toUpperCase();
+}
+
+/**
+ * Get appropriate HTTP status code for error
+ */
+function getHttpStatusCode(error: Error): number {
+  if (error instanceof ValidationError) return 400;
+  if (error instanceof AccessDeniedError) return 403;
+  if (error instanceof ResourceNotFoundError) return 404;
+  if (error instanceof PublishingViolationError) return 409;
+  if (error instanceof ConcurrencyError) return 409;
+  if (error instanceof MongoConnectionError) return 503;
+  if (error instanceof DeploymentError) return 502;
+  
+  // Default to 500 for unknown errors
+  return 500;
+}
+
+/**
+ * Sanitize context to remove sensitive information
+ */
+function sanitizeContext(context: ErrorContext): ErrorContext {
+  const sanitized = { ...context };
+  
+  // Remove or redact sensitive fields
+  if (sanitized.metadata) {
+    const sensitiveKeys = ['password', 'token', 'key', 'secret', 'credentials'];
+    sanitized.metadata = { ...sanitized.metadata };
+    
+    for (const key of Object.keys(sanitized.metadata)) {
+      if (sensitiveKeys.some(sensitive => key.toLowerCase().includes(sensitive))) {
+        sanitized.metadata[key] = '[REDACTED]';
+      }
+    }
+  }
+  
+  return sanitized;
+}
+
+/**
+ * Create log entry for successful retry
+ */
+function createSuccessfulRetryLog(
+  context: ErrorContext,
+  attemptNumber: number,
+  lastError: Error
+): ErrorLogEntry {
+  return {
+    errorId: generateErrorId(),
+    timestamp: new Date(),
+    classification: {
+      type: 'RetrySuccess',
+      severity: 'info',
+      retryable: false,
+      shouldAlert: false,
+      category: 'system',
+    },
+    error: {
+      name: 'RetrySuccess',
+      message: `Operation succeeded after ${attemptNumber} retries`,
+    },
+    context: sanitizeContext(context),
+    retry: {
+      attempt: attemptNumber,
+      maxRetries: attemptNumber,
+      successful: true,
+    },
+    tags: {
+      errorType: 'RetrySuccess',
+      severity: 'info',
+      category: 'system',
+      retriedFrom: lastError.constructor.name,
+    },
+    severity: 'info',
+    shouldAlert: false,
+  };
+}
+
+/**
+ * Log error entry (placeholder - in production would integrate with logging service)
+ */
+export function logError(entry: ErrorLogEntry): void {
+  // In production, this would send to structured logging service
+  // For now, use console with structured output
+  
+  const logLevel = entry.severity === 'critical' ? 'error' : 
+                  entry.severity === 'error' ? 'error' :
+                  entry.severity === 'warning' ? 'warn' : 'info';
+  
+  const logData = {
+    errorId: entry.errorId,
+    timestamp: entry.timestamp.toISOString(),
+    level: logLevel,
+    message: entry.error.message,
+    error: entry.error,
+    context: entry.context,
+    classification: entry.classification,
+    tags: entry.tags,
+    retry: entry.retry,
+  };
+  
+  console[logLevel as keyof typeof console](
+    `[${entry.errorId}] ${entry.error.name}: ${entry.error.message}`,
+    logData
+  );
+  
+  // Alert for critical errors
+  if (entry.shouldAlert) {
+    console.error('🚨 ALERT:', logData);
+  }
+}
+
+/**
+ * Generate unique error ID
+ */
+function generateErrorId(): string {
+  const timestamp = Date.now().toString(36);
+  const random = Math.random().toString(36).substring(2, 10);
+  return `err_${timestamp}_${random}`;
+}
+
+/**
+ * Sleep utility for retry delays
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Create error metrics aggregator
+ */
+export class ErrorMetricsAggregator {
+  private metrics = new Map<string, ErrorMetric>();
+  
+  /**
+   * Record an error occurrence
+   */
+  recordError(entry: ErrorLogEntry): void {
+    const key = `${entry.error.name}:${entry.context.endpoint || 'unknown'}`;
+    
+    if (!this.metrics.has(key)) {
+      this.metrics.set(key, {
+        errorType: entry.error.name,
+        endpoint: entry.context.endpoint || 'unknown',
+        count: 0,
+        lastOccurrence: entry.timestamp,
+        severity: entry.severity,
+        category: entry.classification.category,
+      });
+    }
+    
+    const metric = this.metrics.get(key)!;
+    metric.count++;
+    metric.lastOccurrence = entry.timestamp;
+  }
+  
+  /**
+   * Get error metrics
+   */
+  getMetrics(): ErrorMetric[] {
+    return Array.from(this.metrics.values());
+  }
+  
+  /**
+   * Get metrics for a specific time period
+   */
+  getMetricsForPeriod(since: Date): ErrorMetric[] {
+    return this.getMetrics().filter(metric => metric.lastOccurrence >= since);
+  }
+  
+  /**
+   * Clear metrics older than specified date
+   */
+  clearOldMetrics(before: Date): void {
+    for (const [key, metric] of this.metrics.entries()) {
+      if (metric.lastOccurrence < before) {
+        this.metrics.delete(key);
+      }
+    }
+  }
+}
+
+/**
+ * Error metric data
+ */
+interface ErrorMetric {
+  errorType: string;
+  endpoint: string;
+  count: number;
+  lastOccurrence: Date;
+  severity: ErrorSeverity;
+  category: ErrorCategory;
+}
+
+/**
+ * Constants for error classification
+ */
+export const ERROR_CLASSIFIER_CONSTANTS = {
+  /** Default retry configuration */
+  DEFAULT_RETRY_CONFIG: {
+    maxRetries: 3,
+    baseDelayMs: 1000,
+    maxDelayMs: 30000,
+    backoffMultiplier: 2,
+    useJitter: true,
+    nonRetryableErrors: [
+      'ValidationError',
+      'AccessDeniedError', 
+      'PublishingViolationError',
+      'ResourceNotFoundError',
+    ],
+  } as RetryConfig,
+  
+  /** Error ID prefix */
+  ERROR_ID_PREFIX: 'err_',
+  
+  /** Maximum error context size in bytes */
+  MAX_CONTEXT_SIZE_BYTES: 4 * 1024, // 4KB
+  
+  /** Sensitive field patterns to redact */
+  SENSITIVE_PATTERNS: [
+    'password',
+    'token',
+    'key',
+    'secret',
+    'credentials',
+    'apikey',
+    'auth',
+  ],
+  
+  /** Errors that should always trigger alerts */
+  ALERT_ALWAYS_ERRORS: [
+    'MongoConnectionError',
+    'DeploymentError',
+  ],
+  
+  /** Maximum retry delay in milliseconds */
+  MAX_RETRY_DELAY_MS: 60000, // 1 minute
+  
+  /** Default jitter percentage */
+  DEFAULT_JITTER_PERCENT: 0.1, // 10%
+} as const;

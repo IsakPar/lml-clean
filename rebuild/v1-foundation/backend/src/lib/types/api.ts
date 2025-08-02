@@ -28,6 +28,7 @@ export interface APIMetadata {
   timestamp: string;
   version: string;
   requestId?: string;
+  response_time_ms?: number;
 }
 
 // ================================================
@@ -43,6 +44,7 @@ export interface HealthResponse {
     postgres: ServiceHealth;
     mongodb: ServiceHealth;
     redis: ServiceHealth;
+    redis_service?: ServiceHealthDetailed; // Added for Redis service health
   };
 }
 
@@ -50,6 +52,11 @@ export interface ServiceHealth {
   status: 'connected' | 'disconnected' | 'error';
   responseTime?: number;
   error?: string;
+}
+
+export interface ServiceHealthDetailed extends ServiceHealth {
+  memoryUsage?: string;
+  connectedClients?: number;
 }
 
 // ================================================

@@ -325,7 +325,7 @@ export async function getChannelSubscribers(
   try {
     const result = await publisher.pubsub('NUMSUB', channel);
     // Result format: [channel1, count1, channel2, count2, ...]
-    return Array.isArray(result) && result.length >= 2 ? parseInt(result[1], 10) : 0;
+    return Array.isArray(result) && result.length >= 2 ? parseInt(String(result[1]), 10) : 0;
   } catch {
     return 0;
   }
@@ -337,7 +337,7 @@ export async function getChannelSubscribers(
 export async function getActiveChannels(publisher: Redis): Promise<string[]> {
   try {
     const result = await publisher.pubsub('CHANNELS', 'seat_events:*');
-    return Array.isArray(result) ? result : [];
+    return Array.isArray(result) ? result.map(String) : [];
   } catch {
     return [];
   }

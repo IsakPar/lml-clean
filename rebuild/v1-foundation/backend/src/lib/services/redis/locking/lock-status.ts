@@ -60,14 +60,14 @@ export async function getSeatLockStatus(
     const lockKey = generateSeatLockKey(showId, seatId);
 
     // Get lock value and TTL in parallel if needed
-    const queries = [client.get(lockKey)];
+    const queries: Promise<any>[] = [client.get(lockKey)];
     if (includeTTL) {
       queries.push(client.ttl(lockKey));
     }
 
     const results = await Promise.all(queries);
     const lockId = results[0] as string | null;
-    const ttl = includeTTL ? (results[1] as number) : undefined;
+    const ttl = includeTTL ? (results[1] as number | null) : undefined;
 
     // Base status object
     const status: SeatLockStatus = {
@@ -85,11 +85,11 @@ export async function getSeatLockStatus(
         status.lockId = lockId;
         status.userId = userId;
 
-        if (includeTTL && ttl !== undefined && ttl > 0) {
+        if (includeTTL && ttl !== undefined && ttl !== null && ttl > 0) {
           status.ttl = ttl;
         }
 
-        if (includeExpiry && ttl !== undefined && ttl > 0) {
+        if (includeExpiry && ttl !== undefined && ttl !== null && ttl > 0) {
           status.expiresAt = new Date(Date.now() + (ttl * 1000));
         }
 
@@ -206,11 +206,11 @@ export async function getBulkSeatLockStatus(
           status.userId = userId;
           lockedCount++;
 
-          if (includeTTL && ttl !== undefined && ttl > 0) {
+          if (includeTTL && ttl !== undefined && ttl !== null && ttl > 0) {
             status.ttl = ttl;
           }
 
-          if (includeExpiry && ttl !== undefined && ttl > 0) {
+          if (includeExpiry && ttl !== undefined && ttl !== null && ttl > 0) {
             status.expiresAt = new Date(Date.now() + (ttl * 1000));
           }
 

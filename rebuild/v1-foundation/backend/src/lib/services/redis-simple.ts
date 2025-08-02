@@ -32,7 +32,6 @@ export class SimpleRedisService {
       
       this.client = new Redis(this.redisUrl, {
         maxRetriesPerRequest: 3,
-        retryDelayOnFailover: 100,
         lazyConnect: false,
         keepAlive: 30000,
         commandTimeout: 5000,

@@ -21,7 +21,6 @@ export interface RedisClientConfig {
 export function createRedisClientOptions(role: 'main' | 'subscriber' | 'publisher'): RedisOptions {
   const baseOptions: RedisOptions = {
     maxRetriesPerRequest: REDIS_CONFIG.MAX_RETRIES_PER_REQUEST,
-    retryDelayOnFailover: REDIS_CONFIG.RETRY_DELAY_ON_FAILOVER,
     enableReadyCheck: true,
     connectTimeout: REDIS_CONFIG.CONNECT_TIMEOUT,
     commandTimeout: REDIS_CONFIG.COMMAND_TIMEOUT,
@@ -34,7 +33,6 @@ export function createRedisClientOptions(role: 'main' | 'subscriber' | 'publishe
       ...baseOptions,
       keepAlive: REDIS_CONFIG.KEEP_ALIVE,
       enableOfflineQueue: false,
-      maxMemoryPolicy: 'allkeys-lru',
     };
   }
 

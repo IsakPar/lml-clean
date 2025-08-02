@@ -289,7 +289,7 @@ export const VenueLayoutQuerySchema = z.object({
 // VALIDATION HELPER FUNCTIONS
 // ================================================
 
-export function validateVenueLayout(data: unknown): z.SafeParseResult<VenueLayout> {
+export function validateVenueLayout(data: unknown) {
   return VenueLayoutSchema.safeParse(data);
 }
 

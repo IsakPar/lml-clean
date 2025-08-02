@@ -9,7 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { checkPostgresHealth } from '../../../../lib/db/postgres';
-import { checkMongoDBHealth } from '../../../../lib/db/mongodb';
+import { createMongoDBService } from '../../../../lib/services/mongodb';
 import { checkRedisHealth } from '../../../../lib/db/redis';
 import { getSimpleRedisService } from '../../../../lib/services/redis-simple';
 import type { HealthResponse, APIResponse } from '../../../../lib/types/api';
@@ -28,12 +28,15 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const redisService = await getSimpleRedisService();
     
     // Check all database connections in parallel
-    // Temporarily disable basic Redis health check to avoid connection conflicts
+    const mongoDBService = createMongoDBService();
     const [postgresHealth, mongoHealth, redisServiceHealth] = await Promise.all([
       checkPostgresHealth(),
-      checkMongoDBHealth(),
+      mongoDBService.healthCheck(),
       redisService.healthCheck()
     ]);
+    
+    // Clean up MongoDB connection
+    await mongoDBService.disconnect().catch(console.warn);
     
     // Use Redis service health as the Redis health
     const redisHealth = {

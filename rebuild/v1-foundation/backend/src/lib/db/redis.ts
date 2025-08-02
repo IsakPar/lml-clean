@@ -18,6 +18,9 @@ if (!redisUrl) {
   throw new Error('REDIS_URL environment variable is required');
 }
 
+// TypeScript type guard: redisUrl is guaranteed to be string after this point
+const validatedRedisUrl: string = redisUrl;
+
 // ================================================
 // REDIS CLIENT SINGLETON
 // ================================================
@@ -26,9 +29,8 @@ let redis: Redis | null = null;
 
 export function getRedisClient(): Redis {
   if (!redis) {
-    redis = new Redis(redisUrl, {
+    redis = new Redis(validatedRedisUrl, {
       maxRetriesPerRequest: 3,
-      retryDelayOnFailover: 100,
       lazyConnect: true,
       keepAlive: 30000,
       commandTimeout: 5000,

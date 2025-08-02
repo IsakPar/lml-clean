@@ -20,6 +20,7 @@ import {
   check,
   unique,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { relations } from 'drizzle-orm';
 
 // ================================================
@@ -70,9 +71,9 @@ export const shows = pgTable(
     seatmapRefsIdx: index('idx_shows_seatmap_refs').on(table.seatmapVenueId, table.seatmapShowSlug),
     
     // Constraints
-    validStatus: check('valid_status', `status IN ('active', 'sold_out', 'cancelled', 'draft')`),
-    validCapacity: check('valid_capacity', `total_capacity >= 0 AND available_seats >= 0`),
-    validPricing: check('valid_pricing', `base_price_pence > 0 AND max_price_pence >= base_price_pence`),
+    validStatus: check('valid_status', sql`status IN ('active', 'sold_out', 'cancelled', 'draft')`),
+    validCapacity: check('valid_capacity', sql`total_capacity >= 0 AND available_seats >= 0`),
+    validPricing: check('valid_pricing', sql`base_price_pence > 0 AND max_price_pence >= base_price_pence`),
   })
 );
 
@@ -122,10 +123,10 @@ export const bookings = pgTable(
     validationCodeIdx: index('idx_bookings_validation_code').on(table.validationCode),
     
     // Constraints
-    validPaymentStatus: check('valid_payment_status', `payment_status IN ('pending', 'paid', 'failed', 'refunded')`),
-    validBookingStatus: check('valid_booking_status', `booking_status IN ('confirmed', 'cancelled', 'checked_in')`),
-    validSeatCount: check('valid_seat_count', `seat_count > 0`),
-    validAmount: check('valid_amount', `total_amount_pence > 0`),
+    validPaymentStatus: check('valid_payment_status', sql`payment_status IN ('pending', 'paid', 'failed', 'refunded')`),
+    validBookingStatus: check('valid_booking_status', sql`booking_status IN ('confirmed', 'cancelled', 'checked_in')`),
+    validSeatCount: check('valid_seat_count', sql`seat_count > 0`),
+    validAmount: check('valid_amount', sql`total_amount_pence > 0`),
   })
 );
 
@@ -161,9 +162,9 @@ export const bookingSeats = pgTable(
     sectionIdx: index('idx_booking_seats_section').on(table.seatSection),
     
     // Constraints
-    validSeatStatus: check('valid_seat_status', `seat_status IN ('booked', 'checked_in', 'no_show')`),
-    validSeatPrice: check('valid_seat_price', `price_paid_pence > 0`),
-    validSeatNumber: check('valid_seat_number', `seat_number > 0`),
+    validSeatStatus: check('valid_seat_status', sql`seat_status IN ('booked', 'checked_in', 'no_show')`),
+    validSeatPrice: check('valid_seat_price', sql`price_paid_pence > 0`),
+    validSeatNumber: check('valid_seat_number', sql`seat_number > 0`),
     
     // Unique constraint
     uniqueBookingSeat: unique('unique_booking_seat').on(table.bookingId, table.seatId),
@@ -204,8 +205,8 @@ export const users = pgTable(
     createdIdx: index('idx_users_created').on(table.createdAt),
     
     // Constraints
-    validActive: check('valid_active', `is_active IN (0, 1)`),
-    validMarketingOptIn: check('valid_marketing_opt_in', `marketing_opt_in IN (0, 1)`),
+    validActive: check('valid_active', sql`is_active IN (0, 1)`),
+    validMarketingOptIn: check('valid_marketing_opt_in', sql`marketing_opt_in IN (0, 1)`),
   })
 );
 

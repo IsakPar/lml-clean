@@ -7,10 +7,10 @@
  */
 
 // ================================================
-// TYPE EXPORTS
+// TYPE IMPORTS & EXPORTS
 // ================================================
 
-export type {
+import type {
   AuthUser,
   UserRole,
   UserSession,
@@ -30,11 +30,37 @@ export type {
   AuthErrorCode,
 } from './types';
 
-export { AUTH_ERROR_CODES } from './types';
+import { AUTH_ERROR_CODES } from './types';
+
+export type {
+  AuthUser,
+  UserRole,
+  UserSession,
+  GuestSession,
+  JWTPayload,
+  APIKeyData,
+  LoginRequest,
+  LoginResponse,
+  RefreshTokenRequest,
+  LogoutRequest,
+  CreateGuestSessionRequest,
+  Permission,
+  AuthContext,
+  AuthMiddlewareOptions,
+  AuthMiddlewareResult,
+  AuthError,
+  AuthErrorCode,
+};
+
+export { AUTH_ERROR_CODES };
 
 // ================================================
 // JWT UTILITIES
 // ================================================
+
+import {
+  validateJWTConfig as validateJWTConfiguration,
+} from './jwt-utils';
 
 export {
   generateJWT,
@@ -42,7 +68,7 @@ export {
   extractTokenFromHeader,
   generateRefreshToken,
   verifyRefreshToken,
-  validateJWTConfig,
+  validateJWTConfig as validateJWTConfiguration,
   hasPermission,
   isTokenExpiringSoon,
 } from './jwt-utils';
@@ -137,7 +163,10 @@ export class AuthService {
       phone: data.phone,
       expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
       createdAt: new Date(),
-      bookingContext: data.bookingContext,
+      bookingContext: data.bookingContext ? {
+        ...data.bookingContext,
+        totalAmountPence: 0, // TODO: Calculate actual total from selected seats and show pricing
+      } : undefined,
     };
     
     return {
@@ -204,7 +233,7 @@ export function validateAuthConfig(): {
   const warnings: string[] = [];
   
   // Check JWT configuration
-  const jwtValidation = validateJWTConfig();
+  const jwtValidation = validateJWTConfiguration();
   if (!jwtValidation.valid) {
     errors.push(...jwtValidation.errors);
   }
