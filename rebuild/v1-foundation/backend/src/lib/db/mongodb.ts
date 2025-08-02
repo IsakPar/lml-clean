@@ -66,6 +66,11 @@ export async function getSeatmapsCollection(): Promise<Collection> {
   return database.collection('seatmaps');
 }
 
+export async function getVenueLayoutsCollection(): Promise<Collection> {
+  const database = await connectToMongoDB();
+  return database.collection('venue_layouts');
+}
+
 // ================================================
 // CONNECTION HEALTH CHECK
 // ================================================

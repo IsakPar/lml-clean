@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { checkPostgresHealth } from '../../../../lib/db/postgres';
 import { checkMongoDBHealth } from '../../../../lib/db/mongodb';
 import { checkRedisHealth } from '../../../../lib/db/redis';
+import { getSimpleRedisService } from '../../../../lib/services/redis-simple';
 import type { HealthResponse, APIResponse } from '../../../../lib/types/api';
 
 // ================================================
@@ -23,23 +24,35 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     console.log('🏥 Health check requested');
     
+    // Get simple Redis service instance for health check
+    const redisService = await getSimpleRedisService();
+    
     // Check all database connections in parallel
-    const [postgresHealth, mongoHealth, redisHealth] = await Promise.all([
+    // Temporarily disable basic Redis health check to avoid connection conflicts
+    const [postgresHealth, mongoHealth, redisServiceHealth] = await Promise.all([
       checkPostgresHealth(),
       checkMongoDBHealth(),
-      checkRedisHealth(),
+      redisService.healthCheck()
     ]);
+    
+    // Use Redis service health as the Redis health
+    const redisHealth = {
+      status: redisServiceHealth.status,
+      responseTime: redisServiceHealth.responseTime
+    };
     
     // Calculate overall system status
     const allConnected = 
       postgresHealth.status === 'connected' &&
       mongoHealth.status === 'connected' &&
-      redisHealth.status === 'connected';
+      redisHealth.status === 'connected' &&
+      redisServiceHealth.status === 'connected';
     
     const anyConnected = 
       postgresHealth.status === 'connected' ||
       mongoHealth.status === 'connected' ||
-      redisHealth.status === 'connected';
+      redisHealth.status === 'connected' ||
+      redisServiceHealth.status === 'connected';
     
     const systemStatus = allConnected ? 'healthy' : anyConnected ? 'degraded' : 'unhealthy';
     
@@ -55,6 +68,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         postgres: postgresHealth,
         mongodb: mongoHealth,
         redis: redisHealth,
+        redis_service: {
+          status: redisServiceHealth.status,
+          responseTime: redisServiceHealth.responseTime,
+          memoryUsage: redisServiceHealth.memoryUsage,
+          connectedClients: redisServiceHealth.connectedClients,
+          error: redisServiceHealth.error
+        }
       },
     };
     

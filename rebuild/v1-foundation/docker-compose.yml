@@ -11,7 +11,7 @@ services:
       POSTGRES_PASSWORD: lml_secure_pass
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=en_US.UTF-8"
     ports:
-      - "5432:5432"
+      - "5434:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./db/clean-schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
@@ -34,7 +34,7 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: lml_mongo_pass
       MONGO_INITDB_DATABASE: lml_seatmaps
     ports:
-      - "27017:27017"
+      - "27018:27017"
     volumes:
       - mongodb_data:/data/db
       - ./db/mongo-init.js:/docker-entrypoint-initdb.d/init.js
@@ -52,7 +52,7 @@ services:
     image: redis:7-alpine
     container_name: lml_redis_clean
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes --requirepass lml_redis_pass
