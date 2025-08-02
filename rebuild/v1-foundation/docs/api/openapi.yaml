@@ -1,0 +1,1023 @@
+openapi: 3.1.0
+info:
+  title: LML v1 Foundation API
+  description: |
+    Last Minute Live (LML) v1 Foundation API for ticketing platform.
+    
+    This API provides core functionality for:
+    - Show discovery and information
+    - Seat map retrieval with real-time availability
+    - System health monitoring
+    
+    Built with clean architecture principles and production-ready security.
+  version: 1.0.0
+  contact:
+    name: LML API Support
+    email: api@lastminutelive.com
+  license:
+    name: Proprietary
+    
+servers:
+  - url: http://localhost:3001/api/v1
+    description: Development server
+  - url: https://staging-api.lastminutelive.com/api/v1
+    description: Staging server
+  - url: https://api.lastminutelive.com/api/v1
+    description: Production server
+
+security:
+  - bearerAuth: []
+  - apiKey: []
+  - {}  # Some endpoints allow unauthenticated access
+
+paths:
+  /health:
+    get:
+      summary: System health check
+      description: |
+        Returns system health status including database connectivity.
+        Used for monitoring and load balancer health checks.
+      operationId: getHealth
+      tags:
+        - System
+      security: []  # No authentication required
+      responses:
+        '200':
+          description: System is healthy
+          headers:
+            X-Response-Time:
+              description: Response time in milliseconds
+              schema:
+                type: string
+                example: "45ms"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                healthy:
+                  value:
+                    success: true
+                    data:
+                      status: healthy
+                      uptime: 3600
+                      timestamp: "2025-08-01T12:00:00Z"
+                      version: "v1"
+                      services:
+                        postgres:
+                          status: connected
+                          responseTime: 15
+                        mongodb:
+                          status: connected
+                          responseTime: 23
+                        redis:
+                          status: connected
+                          responseTime: 8
+        '206':
+          description: System is degraded (some services down)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: System is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /shows:
+    get:
+      summary: List upcoming shows
+      description: |
+        Retrieve a list of upcoming shows with pricing and availability information.
+        Results are cached for 5 minutes for optimal performance.
+      operationId: getShows
+      tags:
+        - Shows
+      security: []  # No authentication required
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of shows to return
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: page
+          in: query
+          description: Page number for pagination
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: include_inactive
+          in: query
+          description: Include inactive shows in results
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: List of shows retrieved successfully
+          headers:
+            X-Response-Time:
+              description: Response time in milliseconds
+              schema:
+                type: string
+            X-Total-Shows:
+              description: Total number of shows
+              schema:
+                type: string
+            Cache-Control:
+              description: Cache control header
+              schema:
+                type: string
+                example: "public, max-age=300"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShowsResponse'
+              examples:
+                success:
+                  value:
+                    success: true
+                    data:
+                      shows:
+                        - id: 1
+                          slug: "phantom-her-majestys-2025"
+                          title: "The Phantom of the Opera"
+                          description: "The beloved musical returns to London"
+                          venue:
+                            name: "Her Majesty's Theatre"
+                            address: "Haymarket, St. James's, London SW1Y 4QL"
+                          datetime:
+                            date: "2025-08-15"
+                            time: "19:30"
+                            duration: 150
+                          pricing:
+                            minPricePence: 3500
+                            maxPricePence: 12500
+                            currency: "GBP"
+                          availability:
+                            totalCapacity: 1200
+                            availableSeats: 847
+                            soldOut: false
+                          status: "active"
+                          category: "musical"
+                          ageRating: "PG"
+                          language: "EN"
+                          seatmap:
+                            venueId: "her-majestys-theatre"
+                            showSlug: "phantom-2025"
+                      total: 1
+                      page: 1
+                      limit: 50
+        '400':
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /shows/{id}/seatmap:
+    get:
+      summary: Get seat map for show
+      description: |
+        Retrieve complete seat map for a specific show including:
+        - Venue layout with stage, aisles, and accessibility features
+        - Seat coordinates and pricing from MongoDB and PostgreSQL
+        - Real-time availability and reservation status from Redis
+        
+        This endpoint merges data from multiple sources to provide a complete
+        seat map ready for rendering in the iOS app.
+      operationId: getSeatMap
+      tags:
+        - Shows
+      security: []  # No authentication required for viewing
+      parameters:
+        - name: id
+          in: path
+          description: Show ID
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          example: 1
+      responses:
+        '200':
+          description: Seat map retrieved successfully
+          headers:
+            X-Response-Time:
+              description: Response time in milliseconds
+              schema:
+                type: string
+            X-Total-Seats:
+              description: Total number of seats in venue
+              schema:
+                type: string
+            X-Available-Seats:
+              description: Number of available seats
+              schema:
+                type: string
+            X-Data-Source:
+              description: Source of seat map data
+              schema:
+                type: string
+                enum: [hybrid, mongodb, cache]
+            Cache-Control:
+              description: Cache control header
+              schema:
+                type: string
+                example: "public, max-age=60"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SeatMapResponse'
+              examples:
+                success:
+                  value:
+                    success: true
+                    data:
+                      showId: 1
+                      venueId: "her-majestys-theatre"
+                      showSlug: "phantom-2025"
+                      seatMap:
+                        sections:
+                          stalls:
+                            id: "stalls"
+                            displayName: "Stalls"
+                            color: "#FF6B6B"
+                            priceCategory: "premium"
+                            seats:
+                              - hardcodedId: "stalls-A-1"
+                                layoutId: "seat-1"
+                                row: "A"
+                                number: 1
+                                x: 400
+                                y: 150
+                                isAccessible: false
+                                seatType: "premium"
+                                pricePence: 18500
+                                isAvailable: true
+                                isReserved: false
+                                color: "#FF6B6B"
+                                level: 0
+                                viewQuality: "excellent"
+                            visualConfig:
+                              startX: 400
+                              startY: 150
+                              rows: 20
+                              seatsPerRow: 30
+                              seatSpacing: 30
+                              rowSpacing: 40
+                        layout:
+                          width: 1200
+                          height: 900
+                          scale: 1.0
+                          levels: 1
+                          centerX: 600
+                          centerY: 450
+                          stage:
+                            x: 600
+                            y: 40
+                            width: 400
+                            height: 50
+                            title: "STAGE"
+                        metadata:
+                          totalSeats: 1200
+                          availableSeats: 847
+                          priceRange:
+                            min: 3500
+                            max: 12500
+                          accessibleSeats: 24
+                          levels: ["Stalls", "Dress Circle", "Upper Circle"]
+                      metadata:
+                        dataSource: "hybrid"
+                        generatedAt: "2025-08-01T12:00:00Z"
+        '400':
+          description: Invalid show ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Show or seat map not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token authentication for user sessions
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for service-to-service authentication
+
+  schemas:
+    # Common response wrapper
+    APIResponse:
+      type: object
+      required:
+        - success
+      properties:
+        success:
+          type: boolean
+          description: Indicates if the request was successful
+        data:
+          type: object
+          description: Response data (present on success)
+        error:
+          $ref: '#/components/schemas/APIError'
+        metadata:
+          $ref: '#/components/schemas/APIMetadata'
+
+    APIError:
+      type: object
+      required:
+        - code
+        - message
+        - timestamp
+      properties:
+        code:
+          type: string
+          description: Error code for programmatic handling
+          enum:
+            - INVALID_INPUT
+            - INVALID_ID
+            - MISSING_PARAMETER
+            - SHOW_NOT_FOUND
+            - SEATMAP_NOT_FOUND
+            - VENUE_NOT_FOUND
+            - DATABASE_ERROR
+            - MONGODB_ERROR
+            - REDIS_ERROR
+            - INTERNAL_ERROR
+            - SERVICE_UNAVAILABLE
+            - TIMEOUT
+            - RATE_LIMIT_EXCEEDED
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: string
+          description: Additional error details
+        timestamp:
+          type: string
+          format: date-time
+          description: When the error occurred
+
+    APIMetadata:
+      type: object
+      required:
+        - timestamp
+        - version
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          description: Response generation timestamp
+        version:
+          type: string
+          description: API version
+          example: "v1"
+        requestId:
+          type: string
+          description: Unique request identifier
+
+    # Health endpoint schemas
+    HealthResponse:
+      allOf:
+        - $ref: '#/components/schemas/APIResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/HealthData'
+
+    HealthData:
+      type: object
+      required:
+        - status
+        - uptime
+        - timestamp
+        - version
+        - services
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+          description: Overall system status
+        uptime:
+          type: integer
+          description: System uptime in seconds
+        timestamp:
+          type: string
+          format: date-time
+          description: Health check timestamp
+        version:
+          type: string
+          description: API version
+        services:
+          type: object
+          required:
+            - postgres
+            - mongodb
+            - redis
+          properties:
+            postgres:
+              $ref: '#/components/schemas/ServiceHealth'
+            mongodb:
+              $ref: '#/components/schemas/ServiceHealth'
+            redis:
+              $ref: '#/components/schemas/ServiceHealth'
+
+    ServiceHealth:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [connected, disconnected, error]
+          description: Service connection status
+        responseTime:
+          type: integer
+          description: Service response time in milliseconds
+        error:
+          type: string
+          description: Error message if status is error
+
+    # Shows endpoint schemas
+    ShowsResponse:
+      allOf:
+        - $ref: '#/components/schemas/APIResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/ShowsData'
+
+    ShowsData:
+      type: object
+      required:
+        - shows
+        - total
+      properties:
+        shows:
+          type: array
+          items:
+            $ref: '#/components/schemas/Show'
+          description: List of shows
+        total:
+          type: integer
+          description: Total number of shows
+        page:
+          type: integer
+          description: Current page number
+        limit:
+          type: integer
+          description: Items per page
+
+    Show:
+      type: object
+      required:
+        - id
+        - slug
+        - title
+        - venue
+        - datetime
+        - pricing
+        - availability
+        - status
+        - category
+        - ageRating
+        - language
+        - seatmap
+      properties:
+        id:
+          type: integer
+          description: Unique show identifier
+        slug:
+          type: string
+          description: URL-friendly show identifier
+        title:
+          type: string
+          description: Show title
+        description:
+          type: string
+          description: Show description
+        venue:
+          $ref: '#/components/schemas/Venue'
+        datetime:
+          $ref: '#/components/schemas/DateTime'
+        pricing:
+          $ref: '#/components/schemas/Pricing'
+        availability:
+          $ref: '#/components/schemas/Availability'
+        status:
+          type: string
+          enum: [active, sold_out, cancelled, draft]
+          description: Show status
+        category:
+          type: string
+          description: Show category
+        ageRating:
+          type: string
+          description: Age rating
+        language:
+          type: string
+          description: Language code
+        seatmap:
+          $ref: '#/components/schemas/SeatMapReference'
+
+    Venue:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: Venue name
+        address:
+          type: string
+          description: Venue address
+
+    DateTime:
+      type: object
+      required:
+        - date
+        - time
+        - duration
+      properties:
+        date:
+          type: string
+          format: date
+          description: Show date (YYYY-MM-DD)
+        time:
+          type: string
+          pattern: '^([01]?[0-9]|2[0-3]):[0-5][0-9]$'
+          description: Show time (HH:MM)
+        duration:
+          type: integer
+          description: Show duration in minutes
+
+    Pricing:
+      type: object
+      required:
+        - minPricePence
+        - maxPricePence
+        - currency
+      properties:
+        minPricePence:
+          type: integer
+          minimum: 0
+          description: Minimum price in pence
+        maxPricePence:
+          type: integer
+          minimum: 0
+          description: Maximum price in pence
+        currency:
+          type: string
+          enum: [GBP]
+          description: Currency code
+
+    Availability:
+      type: object
+      required:
+        - totalCapacity
+        - availableSeats
+        - soldOut
+      properties:
+        totalCapacity:
+          type: integer
+          minimum: 0
+          description: Total venue capacity
+        availableSeats:
+          type: integer
+          minimum: 0
+          description: Currently available seats
+        soldOut:
+          type: boolean
+          description: Whether show is sold out
+
+    SeatMapReference:
+      type: object
+      required:
+        - venueId
+        - showSlug
+      properties:
+        venueId:
+          type: string
+          description: MongoDB venue identifier
+        showSlug:
+          type: string
+          description: MongoDB show identifier
+
+    # Seatmap endpoint schemas
+    SeatMapResponse:
+      allOf:
+        - $ref: '#/components/schemas/APIResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/SeatMapData'
+
+    SeatMapData:
+      type: object
+      required:
+        - showId
+        - venueId
+        - showSlug
+        - seatMap
+        - metadata
+      properties:
+        showId:
+          type: integer
+          description: Show ID from PostgreSQL
+        venueId:
+          type: string
+          description: Venue ID from MongoDB
+        showSlug:
+          type: string
+          description: Show slug from MongoDB
+        seatMap:
+          $ref: '#/components/schemas/SeatMap'
+        metadata:
+          $ref: '#/components/schemas/SeatMapMetadata'
+
+    SeatMap:
+      type: object
+      required:
+        - sections
+        - layout
+        - metadata
+      properties:
+        sections:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/SeatSection'
+          description: Seat sections keyed by section ID
+        layout:
+          $ref: '#/components/schemas/VenueLayout'
+        metadata:
+          $ref: '#/components/schemas/SeatMapStats'
+
+    SeatSection:
+      type: object
+      required:
+        - id
+        - displayName
+        - color
+        - seats
+        - visualConfig
+      properties:
+        id:
+          type: string
+          description: Section identifier
+        displayName:
+          type: string
+          description: Human-readable section name
+        color:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+          description: Section color hex code
+        priceCategory:
+          type: string
+          description: Price category
+        seats:
+          type: array
+          items:
+            $ref: '#/components/schemas/Seat'
+          description: Seats in this section
+        visualConfig:
+          $ref: '#/components/schemas/VisualConfig'
+
+    Seat:
+      type: object
+      required:
+        - hardcodedId
+        - layoutId
+        - row
+        - number
+        - x
+        - y
+        - isAccessible
+        - seatType
+        - pricePence
+        - isAvailable
+        - isReserved
+        - color
+        - level
+        - viewQuality
+      properties:
+        hardcodedId:
+          type: string
+          pattern: '^[a-z0-9_-]+-[A-Z0-9]+-(0[1-9]|[1-9][0-9]*)$'
+          description: Seat ID following convention (section-row-number)
+        layoutId:
+          type: string
+          description: MongoDB layout identifier
+        row:
+          type: string
+          description: Seat row
+        number:
+          type: integer
+          minimum: 1
+          description: Seat number
+        x:
+          type: number
+          description: X coordinate for rendering
+        y:
+          type: number
+          description: Y coordinate for rendering
+        isAccessible:
+          type: boolean
+          description: Whether seat is wheelchair accessible
+        seatType:
+          type: string
+          description: Seat type/category
+        pricePence:
+          type: integer
+          minimum: 0
+          description: Seat price in pence
+        isAvailable:
+          type: boolean
+          description: Whether seat is available for booking
+        isReserved:
+          type: boolean
+          description: Whether seat is temporarily reserved
+        color:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+          description: Seat color hex code
+        level:
+          type: integer
+          minimum: 0
+          description: Floor level (0=ground, 1=balcony, etc.)
+        viewQuality:
+          type: string
+          enum: [excellent, good, fair, limited]
+          description: View quality rating
+
+    VisualConfig:
+      type: object
+      required:
+        - startX
+        - startY
+        - rows
+        - seatsPerRow
+        - seatSpacing
+        - rowSpacing
+      properties:
+        startX:
+          type: number
+          description: Starting X coordinate for section
+        startY:
+          type: number
+          description: Starting Y coordinate for section
+        rows:
+          type: integer
+          minimum: 1
+          description: Number of rows in section
+        seatsPerRow:
+          type: integer
+          minimum: 1
+          description: Average seats per row
+        seatSpacing:
+          type: number
+          description: Spacing between seats
+        rowSpacing:
+          type: number
+          description: Spacing between rows
+
+    VenueLayout:
+      type: object
+      required:
+        - width
+        - height
+        - scale
+        - levels
+        - centerX
+        - centerY
+      properties:
+        width:
+          type: number
+          description: Venue width
+        height:
+          type: number
+          description: Venue height
+        scale:
+          type: number
+          description: Default scale factor
+        levels:
+          type: integer
+          minimum: 1
+          description: Number of venue levels
+        centerX:
+          type: number
+          description: Center X coordinate
+        centerY:
+          type: number
+          description: Center Y coordinate
+        stage:
+          $ref: '#/components/schemas/StageElement'
+        aisles:
+          type: array
+          items:
+            $ref: '#/components/schemas/AisleElement'
+        labels:
+          type: array
+          items:
+            $ref: '#/components/schemas/LabelElement'
+        accessibilitySpots:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccessibilityElement'
+
+    StageElement:
+      type: object
+      required:
+        - x
+        - y
+        - width
+        - height
+        - title
+      properties:
+        x:
+          type: number
+        y:
+          type: number
+        width:
+          type: number
+        height:
+          type: number
+        title:
+          type: string
+        backgroundColor:
+          type: string
+        borderColor:
+          type: string
+
+    AisleElement:
+      type: object
+      required:
+        - id
+        - x
+        - y
+        - width
+        - height
+      properties:
+        id:
+          type: string
+        x:
+          type: number
+        y:
+          type: number
+        width:
+          type: number
+        height:
+          type: number
+        color:
+          type: string
+        opacity:
+          type: number
+
+    LabelElement:
+      type: object
+      required:
+        - id
+        - text
+        - x
+        - y
+      properties:
+        id:
+          type: string
+        text:
+          type: string
+        x:
+          type: number
+        y:
+          type: number
+        fontSize:
+          type: number
+        color:
+          type: string
+        fontWeight:
+          type: string
+
+    AccessibilityElement:
+      type: object
+      required:
+        - id
+        - type
+        - x
+        - y
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [wheelchair, assisted_listening, visual_aid]
+        x:
+          type: number
+        y:
+          type: number
+        description:
+          type: string
+
+    SeatMapStats:
+      type: object
+      required:
+        - totalSeats
+        - availableSeats
+        - priceRange
+        - accessibleSeats
+        - levels
+      properties:
+        totalSeats:
+          type: integer
+          minimum: 0
+        availableSeats:
+          type: integer
+          minimum: 0
+        priceRange:
+          type: object
+          required:
+            - min
+            - max
+          properties:
+            min:
+              type: integer
+              minimum: 0
+            max:
+              type: integer
+              minimum: 0
+        accessibleSeats:
+          type: integer
+          minimum: 0
+        levels:
+          type: array
+          items:
+            type: string
+
+    SeatMapMetadata:
+      type: object
+      required:
+        - dataSource
+        - generatedAt
+      properties:
+        dataSource:
+          type: string
+          enum: [hybrid, mongodb, cache]
+          description: Source of seat map data
+        generatedAt:
+          type: string
+          format: date-time
+          description: When seat map was generated
+        cacheExpiry:
+          type: string
+          format: date-time
+          description: When cached data expires
+
+    ErrorResponse:
+      allOf:
+        - $ref: '#/components/schemas/APIResponse'
+        - type: object
+          properties:
+            success:
+              type: boolean
+              enum: [false]
+            error:
+              $ref: '#/components/schemas/APIError'
+
+tags:
+  - name: System
+    description: System monitoring and health checks
+  - name: Shows
+    description: Show discovery and seat map operations
+
+externalDocs:
+  description: LML v1 Foundation Documentation
+  url: https://docs.lastminutelive.com/api/v1

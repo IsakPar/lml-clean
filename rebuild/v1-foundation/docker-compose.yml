@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  # PostgreSQL - Core Business Data (Shows, Bookings, Users)
+  postgres:
+    image: postgres:15
+    container_name: lml_postgres_clean
+    environment:
+      POSTGRES_DB: lastminutelive_clean
+      POSTGRES_USER: lml_user
+      POSTGRES_PASSWORD: lml_secure_pass
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=en_US.UTF-8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/clean-schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./db/clean-seed-data.sql:/docker-entrypoint-initdb.d/02-seed.sql
+    networks:
+      - lml_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lml_user -d lastminutelive_clean"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MongoDB - Seatmap Data Only (Venues, Seat Coordinates)
+  mongodb:
+    image: mongo:7
+    container_name: lml_mongodb_clean
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: lml_admin
+      MONGO_INITDB_ROOT_PASSWORD: lml_mongo_pass
+      MONGO_INITDB_DATABASE: lml_seatmaps
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - ./db/mongo-init.js:/docker-entrypoint-initdb.d/init.js
+    networks:
+      - lml_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis - Session Management & Caching
+  redis:
+    image: redis:7-alpine
+    container_name: lml_redis_clean
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --requirepass lml_redis_pass
+    networks:
+      - lml_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  postgres_data:
+    name: lml_postgres_data
+  mongodb_data:
+    name: lml_mongodb_data
+  redis_data:
+    name: lml_redis_data
+
+networks:
+  lml_network:
+    name: lml_network
+    driver: bridge
