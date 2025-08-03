@@ -416,11 +416,11 @@ function createSuccessfulRetryLog(
     errorId: generateErrorId(),
     timestamp: new Date(),
     classification: {
-      severity: "low",
-      requiresAlert: false,
+      severity: 'low',
       isRetryable: false,
+      requiresAlert: false,
       category: "system",
-      userMessage: "Operation completed successfully",
+      userMessage: "Operation completed successfully"
     },
     error: {
       name: 'RetrySuccess',
@@ -432,12 +432,15 @@ function createSuccessfulRetryLog(
       maxRetries: attemptNumber,
       successful: true,
     },
-    severity: "low",
-    shouldAlert: false,    tags: {
+    tags: {
       errorType: 'RetrySuccess',
+      severity: 'low',
       category: "system",
-      userMessage: "Operation completed successfully",
+      userMessage: "Operation completed successfully"
+      retriedFrom: lastError.constructor.name,
     },
+    severity: 'low',
+    requiresAlert: false,
   };
 }
 
@@ -449,8 +452,8 @@ export function logError(entry: ErrorLogEntry): void {
   // For now, use console with structured output
   
   const logLevel = entry.severity === 'critical' ? 'error' : 
-                  entry.severity === "high" ? 'error' :
-                  entry.severity === "medium" ? 'warn' : 'info';
+                  entry.severity === 'error' ? 'error' :
+                  entry.severity === 'warning' ? 'warn' : 'info';
   
   const logData = {
     errorId: entry.errorId,
@@ -464,14 +467,12 @@ export function logError(entry: ErrorLogEntry): void {
     retry: entry.retry,
   };
   
-  // Log to console with appropriate level
-  if (logLevel === "error") {
-    console.error(`[${entry.errorId}] ${entry.error.name}: ${entry.error.message}`, logData);
-  } else if (logLevel === "warn") {
-    console.warn(`[${entry.errorId}] ${entry.error.name}: ${entry.error.message}`, logData);
-  } else {
-    console.log(`[${entry.errorId}] ${entry.error.name}: ${entry.error.message}`, logData);
-  }
+  console[logLevel as keyof typeof console](
+    `[${entry.errorId}] ${entry.error.name}: ${entry.error.message}`,
+    logData
+  );
+  
+  // Alert for critical errors
   if (entry.shouldAlert) {
     console.error('🚨 ALERT:', logData);
   }

@@ -163,7 +163,7 @@ export class BackupService {
       return {
         success: false,
         backupId,
-        error: error instanceof Error ? error.message : String(error),
+        error: error.message,
         createdAt: new Date(),
         metadata: {
           layoutId: layout.layoutId,

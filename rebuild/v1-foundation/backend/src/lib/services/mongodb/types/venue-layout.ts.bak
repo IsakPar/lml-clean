@@ -8,7 +8,7 @@ export interface MultilingualLabel {
   en: string;                    // Required English
   sv?: string;                   // Optional Swedish  
   fr?: string;                   // Optional French
-  [languageCode: string]: string | undefined; // Extensible for future languages
+  [languageCode: string]?: string; // Extensible for future languages
 }
 
 export interface Coordinate {

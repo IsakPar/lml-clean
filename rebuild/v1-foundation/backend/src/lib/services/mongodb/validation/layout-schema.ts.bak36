@@ -290,15 +290,10 @@ export function prepareLayoutForSave(layout: Partial<VenueLayout>): Partial<Venu
   }
   
   // Generate layout hash
-  // Generate layout hash
-  if (preparedLayout.seats && preparedLayout.seats.length > 0) {
-    preparedLayout.layoutHash = generateLayoutHash({
-      seats: preparedLayout.seats,
-      viewport: preparedLayout.viewport,
-      zones: preparedLayout.zones,
-      layoutType: preparedLayout.layoutType
-    });
-  }  
+  if (preparedLayout.seats) {
+    preparedLayout.layoutHash = generateLayoutHash(preparedLayout);
+  }
+  
   // Set timestamps
   const now = new Date();
   if (!preparedLayout.createdAt) {

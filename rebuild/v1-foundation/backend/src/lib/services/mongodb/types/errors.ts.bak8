@@ -1,0 +1,284 @@
+/**
+ * MongoDB Service Error Types
+ */
+
+// Base Error Classes
+export class AccessDeniedError extends Error {
+  public readonly resourceId?: string;
+  public readonly missingPermissions?: string[];
+  public readonly metadata?: Record<string, any>;
+
+  constructor(
+    message: string,
+    resourceId?: string,
+    missingPermissions?: string[],
+    metadata?: Record<string, any>
+  ) {
+    super(message);
+    this.name = 'AccessDeniedError';
+    this.resourceId = resourceId;
+    this.missingPermissions = missingPermissions;
+    this.metadata = metadata;
+  }
+}
+
+export class ImmutabilityViolationError extends Error {
+  public readonly attemptedChanges?: any;
+  
+  constructor(message: string, attemptedChanges?: any) {
+    super(message);
+    this.name = 'ImmutabilityViolationError';
+    this.attemptedChanges = attemptedChanges;
+  }
+}
+
+export class ValidationError extends Error {
+  public readonly field?: string;
+  public readonly receivedValue?: any;
+  
+  constructor(message: string, field?: string, receivedValue?: any) {
+    super(message);
+    this.name = 'ValidationError';
+    this.field = field;
+    this.receivedValue = receivedValue;
+  }
+}
+
+export class StatusTransitionError extends Error {
+  public readonly fromStatus?: string;
+  public readonly toStatus?: string;
+  
+  constructor(message: string, fromStatus?: string, toStatus?: string) {
+    super(message);
+    this.name = 'StatusTransitionError';
+    this.fromStatus = fromStatus;
+    this.toStatus = toStatus;
+  }
+}
+
+export class PublishingViolationError extends Error {
+  public readonly layoutId?: string;
+  public readonly violationType?: string;
+  public readonly metadata?: Record<string, any>;
+  
+  constructor(
+    message: string, 
+    layoutId?: string, 
+    violationType?: string, 
+    metadata?: Record<string, any>
+  ) {
+    super(message);
+    this.name = 'PublishingViolationError';
+    this.layoutId = layoutId;
+    this.violationType = violationType;
+    this.metadata = metadata;
+  }
+}
+
+export class MongoDBServiceError extends Error {
+  public readonly operation?: string;
+  public readonly originalError?: Error;
+  public readonly code?: string | number;
+  
+  constructor(message: string, operation?: string, originalError?: Error, code?: string | number) {
+    super(message);
+    this.name = "MongoDBServiceError";
+    this.operation = operation;
+    this.originalError = originalError;
+    this.code = code;
+  }
+}
+
+export class MongoWriteError extends Error {
+  public readonly code?: number;
+  public readonly index?: number;
+  
+  constructor(message: string, code?: number, index?: number) {
+    super(message);
+    this.name = 'MongoWriteError';
+    this.code = code;
+    this.index = index;
+  }
+}
+
+export class MongoConnectionError extends Error {
+  public readonly host?: string;
+  public readonly port?: number;
+  
+  constructor(message: string, host?: string, port?: number) {
+    super(message);
+    this.name = 'MongoConnectionError';
+    this.host = host;
+    this.port = port;
+  }
+}
+
+export class ResourceNotFoundError extends Error {
+  public readonly resourceType?: string;
+  public readonly resourceId?: string;
+  
+  constructor(message: string, resourceType?: string, resourceId?: string) {
+    super(message);
+    this.name = 'ResourceNotFoundError';
+    this.resourceType = resourceType;
+    this.resourceId = resourceId;
+  }
+}
+
+export class ConcurrencyError extends Error {
+  public readonly resourceId?: string;
+  public readonly expectedVersion?: number;
+  public readonly actualVersion?: number;
+  
+  constructor(message: string, resourceId?: string, expectedVersion?: number, actualVersion?: number) {
+    super(message);
+    this.name = 'ConcurrencyError';
+    this.resourceId = resourceId;
+    this.expectedVersion = expectedVersion;
+    this.actualVersion = actualVersion;
+  }
+}
+
+export class DeploymentError extends Error {
+  public readonly deploymentId?: string;
+  public readonly stage?: string;
+  
+  constructor(message: string, deploymentId?: string, stage?: string) {
+    super(message);
+    this.name = 'DeploymentError';
+    this.deploymentId = deploymentId;
+    this.stage = stage;
+  }
+}
+
+// Error Classification Types
+export type ErrorSeverity = 'low' | 'medium' | 'high' | 'critical';
+export type ErrorCategory = 'connection' | 'validation' | 'authorization' | 'business_logic' | 'system' | 'external';
+
+export interface ErrorContext {
+  userId?: string;
+  organizationId?: string;
+  operation?: string;
+  resource?: string;
+  timestamp?: Date;
+  endpoint?: string;
+  method?: string;  metadata?: Record<string, any>;
+}
+
+export interface ErrorClassification {
+  severity: ErrorSeverity;
+  category: ErrorCategory;
+  isRetryable: boolean;
+  requiresAlert: boolean;
+  userMessage: string;
+  actionRequired?: string;
+}
+
+// Error Classification Function
+export function classifyError(error: Error, context?: ErrorContext): ErrorClassification {
+  // Access denied errors
+  if (error instanceof AccessDeniedError) {
+    return {
+      severity: 'medium',
+      category: 'authorization',
+      isRetryable: false,
+      requiresAlert: true,
+      userMessage: 'Access denied. You do not have permission for this operation.',
+      actionRequired: 'Check user permissions and organization access.'
+    };
+  }
+
+  // Validation errors
+  if (error instanceof ValidationError) {
+    return {
+      severity: 'low',
+      category: 'validation',
+      isRetryable: false,
+      requiresAlert: false,
+      userMessage: 'Invalid input data provided.',
+      actionRequired: 'Correct the input data and try again.'
+    };
+  }
+
+  // Connection errors
+  if (error instanceof MongoConnectionError) {
+    return {
+      severity: 'critical',
+      category: 'connection',
+      isRetryable: true,
+      requiresAlert: true,
+      userMessage: 'Database connection issue. Please try again in a moment.',
+      actionRequired: 'Check database connectivity and server status.'
+    };
+  }
+
+  // Resource not found
+  if (error instanceof ResourceNotFoundError) {
+    return {
+      severity: 'low',
+      category: 'business_logic',
+      isRetryable: false,
+      requiresAlert: false,
+      userMessage: 'The requested resource was not found.',
+      actionRequired: 'Verify the resource ID and try again.'
+    };
+  }
+
+  // Concurrency errors
+  if (error instanceof ConcurrencyError) {
+    return {
+      severity: 'medium',
+      category: 'business_logic',
+      isRetryable: true,
+      requiresAlert: false,
+      userMessage: 'Resource was modified by another user. Please refresh and try again.',
+      actionRequired: 'Refresh data and retry the operation.'
+    };
+  }
+
+  // Publishing violations
+  if (error instanceof PublishingViolationError) {
+    return {
+      severity: 'medium',
+      category: 'business_logic',
+      isRetryable: false,
+      requiresAlert: false,
+      userMessage: 'Cannot modify published content. Published layouts are immutable.',
+      actionRequired: 'Create a new version or contact an administrator.'
+    };
+  }
+
+  // Deployment errors
+  if (error instanceof DeploymentError) {
+    return {
+      severity: 'high',
+      category: 'system',
+      isRetryable: true,
+      requiresAlert: true,
+      userMessage: 'Deployment failed. Please try again or contact support.',
+      actionRequired: 'Check deployment logs and system status.'
+    };
+  }
+
+  // Generic MongoDB service errors
+  if (error instanceof MongoDBServiceError) {
+    return {
+      severity: 'high',
+      category: 'system',
+      isRetryable: true,
+      requiresAlert: true,
+      userMessage: 'Database service error. Please try again in a moment.',
+      actionRequired: 'Check MongoDB service logs and connectivity.'
+    };
+  }
+
+  // Unknown errors
+  return {
+    severity: 'medium',
+    category: 'system',
+    isRetryable: false,
+    requiresAlert: true,
+    userMessage: 'An unexpected error occurred. Please try again or contact support.',
+    actionRequired: 'Investigate error logs and stack trace.'
+  };
+}

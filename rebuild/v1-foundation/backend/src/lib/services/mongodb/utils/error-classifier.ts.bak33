@@ -471,7 +471,8 @@ export function logError(entry: ErrorLogEntry): void {
     console.warn(`[${entry.errorId}] ${entry.error.name}: ${entry.error.message}`, logData);
   } else {
     console.log(`[${entry.errorId}] ${entry.error.name}: ${entry.error.message}`, logData);
-  }
+  }    `[${entry.errorId}] ${entry.error.name}: ${entry.error.message}`,
+    logData
   if (entry.shouldAlert) {
     console.error('🚨 ALERT:', logData);
   }

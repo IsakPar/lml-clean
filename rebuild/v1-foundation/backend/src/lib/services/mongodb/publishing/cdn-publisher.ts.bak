@@ -181,8 +181,8 @@ export async function publishToCDN(
     }
     
     throw new LayoutPublishingError(
-      `Failed to publish layout ${layout.layoutId} to CDN: ${error instanceof Error ? error.message : String(error)}`,
-      error instanceof Error ? error : undefined
+      `Failed to publish layout ${layout.layoutId} to CDN: ${error.message}`,
+      error
     );
   }
 }

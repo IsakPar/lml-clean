@@ -343,11 +343,11 @@ function generateUserMessage(error: Error, classification: ErrorClassification):
   switch (classification.severity) {
     case 'critical':
       return 'A critical system error occurred. Our team has been notified.';
-    case "high":
+    case 'error':
       return 'An error occurred while processing your request. Please try again.';
-    case "medium":
+    case 'warning':
       return 'Your request could not be completed. Please check your input and try again.';
-    case "low":
+    case 'info':
       return 'Request completed with warnings.';
     default:
       return 'An unexpected error occurred.';
@@ -359,7 +359,7 @@ function generateUserMessage(error: Error, classification: ErrorClassification):
  */
 function generateErrorCode(error: Error): string {
   if (error instanceof MongoDBServiceError) {
-    return error.code ? String(error.code) : "UNKNOWN_ERROR";
+    return error.code;
   }
   
   // Generate code from error type
@@ -416,11 +416,11 @@ function createSuccessfulRetryLog(
     errorId: generateErrorId(),
     timestamp: new Date(),
     classification: {
-      severity: "low",
-      requiresAlert: false,
-      isRetryable: false,
-      category: "system",
-      userMessage: "Operation completed successfully",
+      type: 'RetrySuccess',
+      severity: 'info',
+      retryable: false,
+      shouldAlert: false,
+      category: 'system',
     },
     error: {
       name: 'RetrySuccess',
@@ -432,12 +432,14 @@ function createSuccessfulRetryLog(
       maxRetries: attemptNumber,
       successful: true,
     },
-    severity: "low",
-    shouldAlert: false,    tags: {
+    tags: {
       errorType: 'RetrySuccess',
-      category: "system",
-      userMessage: "Operation completed successfully",
+      severity: 'info',
+      category: 'system',
+      retriedFrom: lastError.constructor.name,
     },
+    severity: 'info',
+    shouldAlert: false,
   };
 }
 
@@ -449,8 +451,8 @@ export function logError(entry: ErrorLogEntry): void {
   // For now, use console with structured output
   
   const logLevel = entry.severity === 'critical' ? 'error' : 
-                  entry.severity === "high" ? 'error' :
-                  entry.severity === "medium" ? 'warn' : 'info';
+                  entry.severity === 'error' ? 'error' :
+                  entry.severity === 'warning' ? 'warn' : 'info';
   
   const logData = {
     errorId: entry.errorId,
@@ -464,14 +466,12 @@ export function logError(entry: ErrorLogEntry): void {
     retry: entry.retry,
   };
   
-  // Log to console with appropriate level
-  if (logLevel === "error") {
-    console.error(`[${entry.errorId}] ${entry.error.name}: ${entry.error.message}`, logData);
-  } else if (logLevel === "warn") {
-    console.warn(`[${entry.errorId}] ${entry.error.name}: ${entry.error.message}`, logData);
-  } else {
-    console.log(`[${entry.errorId}] ${entry.error.name}: ${entry.error.message}`, logData);
-  }
+  console[logLevel as keyof typeof console](
+    `[${entry.errorId}] ${entry.error.name}: ${entry.error.message}`,
+    logData
+  );
+  
+  // Alert for critical errors
   if (entry.shouldAlert) {
     console.error('🚨 ALERT:', logData);
   }
