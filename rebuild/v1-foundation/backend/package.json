@@ -16,7 +16,14 @@
     "db:studio": "drizzle-kit studio",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:ci": "jest --ci --coverage"
+    "test:ci": "jest --ci --coverage",
+    "seed:test-data": "tsx scripts/seed-comprehensive-test-data.ts",
+    "test:rendering-engine": "curl -s http://localhost:3000/api/v1/test-rendering-engine | jq",
+    "test:booking-fsm": "curl -s -X POST http://localhost:3000/api/v1/test-booking-fsm -H 'Content-Type: application/json' -d '{}' | jq",
+    "test:race-conditions": "curl -s -X POST http://localhost:3000/api/v1/test-race-conditions -H 'Content-Type: application/json' -d '{\"concurrentUsers\":10,\"scenario\":\"all\"}' | jq",
+    "test:failure-modes": "curl -s -X POST http://localhost:3000/api/v1/test-failure-modes -H 'Content-Type: application/json' -d '{\"scenarios\":[\"all\"]}' | jq",
+    "validate:enhanced": "tsx scripts/run-enhanced-validation.ts",
+    "validate:full": "pnpm run seed:test-data && pnpm run validate:enhanced"
   },
   "dependencies": {
     "@types/bcrypt": "^6.0.0",
@@ -26,6 +33,8 @@
     "jose": "^6.0.12",
     "mongodb": "^6.0.0",
     "next": "^15.0.0",
+    "node-fetch": "^3.3.0",
+    "pg": "^8.11.0",
     "postgres": "^3.4.0",
     "react": "^18.0.0",
     "react-dom": "^18.0.0",
@@ -36,6 +45,7 @@
   "devDependencies": {
     "@types/jest": "^29.0.0",
     "@types/node": "^20.0.0",
+    "@types/pg": "^8.10.0",
     "@types/react": "^18.0.0",
     "@types/react-dom": "^18.0.0",
     "@types/uuid": "^10.0.0",
