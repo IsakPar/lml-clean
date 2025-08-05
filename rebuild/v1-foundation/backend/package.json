@@ -23,7 +23,10 @@
     "test:race-conditions": "curl -s -X POST http://localhost:3000/api/v1/test-race-conditions -H 'Content-Type: application/json' -d '{\"concurrentUsers\":10,\"scenario\":\"all\"}' | jq",
     "test:failure-modes": "curl -s -X POST http://localhost:3000/api/v1/test-failure-modes -H 'Content-Type: application/json' -d '{\"scenarios\":[\"all\"]}' | jq",
     "validate:enhanced": "tsx scripts/run-enhanced-validation.ts",
-    "validate:full": "pnpm run seed:test-data && pnpm run validate:enhanced"
+    "validate:full": "pnpm run seed:test-data && pnpm run validate:enhanced",
+    "validate:delta": "tsx scripts/validate-delta.ts",
+    "validate:delta:layouts": "tsx scripts/validate-delta.ts --layouts-only",
+    "validate:delta:events": "tsx scripts/validate-delta.ts --events-only"
   },
   "dependencies": {
     "@types/bcrypt": "^6.0.0",
