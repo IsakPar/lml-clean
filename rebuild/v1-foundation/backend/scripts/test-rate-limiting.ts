@@ -38,12 +38,12 @@ async function testRateLimitingSystem() {
     console.log('\n2️⃣ Testing Environment Configuration');
     
     // Set required environment variables for testing
-    process.env.NODE_ENV = 'development';
-    process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/test';
-    process.env.MONGODB_URI = 'mongodb://localhost:27017';
-    process.env.MONGODB_DB = 'test';
-    process.env.REDIS_URL = 'redis://localhost:6379';
-    process.env.JWT_SECRET = 'test-jwt-secret-for-rate-limiting-test-32-chars';
+    if (!process.env.NODE_ENV) process.env.NODE_ENV = 'development';
+    if (!process.env.DATABASE_URL) process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/test';
+    if (!process.env.MONGODB_URI) process.env.MONGODB_URI = 'mongodb://localhost:27017';
+    if (!process.env.MONGODB_DB) process.env.MONGODB_DB = 'test';
+    if (!process.env.REDIS_URL) process.env.REDIS_URL = 'redis://localhost:6379';
+    if (!process.env.JWT_SECRET) process.env.JWT_SECRET = 'test-jwt-secret-for-rate-limiting-test-32-chars';
     
     const { getConfig } = await import('../src/lib/env');
     const config = getConfig();
@@ -68,9 +68,10 @@ async function testRateLimitingSystem() {
     const { 
       withAuthRateLimit, 
       withBookingRateLimit, 
-      withGeneralRateLimit,
-      createRateLimitHeaders
+      withGeneralRateLimit
     } = await import('../src/lib/middleware/rate-limit-enhanced');
+    
+    const { createRateLimitHeaders } = await import('../src/lib/security/rate-limiter');
     
     console.log('   ✅ Rate limiting middleware functions imported');
     
