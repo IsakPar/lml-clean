@@ -30,7 +30,15 @@ const envSchema = z.object({
   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z.string().regex(/^pk_(test_|live_)/).optional(),
   STRIPE_WEBHOOK_SECRET: z.string().startsWith('whsec_').optional(),
   
-  // Authentication (optional for Phase 1)
+  // Authentication (required for Phase 1)
+  JWT_SECRET: z.string().min(32),
+  JWT_EXPIRES_IN: z.string().default('1h'),
+  
+  // Session and Security (optional)
+  SESSION_REDIS_URL: z.string().startsWith('redis://').optional(),
+  SECURITY_WEBHOOK_URL: z.string().url().optional(),
+  
+  // NextAuth (optional for future)
   NEXTAUTH_URL: z.string().url().optional(),
   NEXTAUTH_SECRET: z.string().min(32).optional(),
   
@@ -132,6 +140,12 @@ export function getConfig(): {
   logging: {
     level: string;
   };
+  auth: {
+    jwtSecret: string;
+    jwtExpiresIn: string;
+    sessionRedisUrl?: string;
+    securityWebhookUrl?: string;
+  };
 } {
   const env = validateEnvironment();
   
@@ -158,6 +172,12 @@ export function getConfig(): {
     },
     logging: {
       level: env.LOG_LEVEL,
+    },
+    auth: {
+      jwtSecret: env.JWT_SECRET,
+      jwtExpiresIn: env.JWT_EXPIRES_IN,
+      sessionRedisUrl: env.SESSION_REDIS_URL,
+      securityWebhookUrl: env.SECURITY_WEBHOOK_URL,
     },
   };
 }
