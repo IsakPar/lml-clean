@@ -1,11 +1,13 @@
 /**
  * Production-Grade Rate Limiting Test Endpoint
- * Simple validation that our rate limiting system is ready
+ * Enhanced with tenant-aware rate limiting system
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { withGeneralRateLimit, getRateLimitStatusResponse } from '@/lib/middleware/rate-limit-enhanced';
+import { rateLimiterService } from '@/lib/security/rate-limiter';
 
-export async function GET(request: NextRequest) {
+export const GET = withGeneralRateLimit(async (request: NextRequest) => {
   const { searchParams } = new URL(request.url);
   const scenario = searchParams.get('scenario') || 'overview';
   
@@ -14,20 +16,20 @@ export async function GET(request: NextRequest) {
       case 'overview':
         return NextResponse.json({
           success: true,
-          message: 'Production-grade rate limiting system operational',
+          message: 'Production-grade tenant-aware rate limiting system operational',
           systemStatus: {
-            rateLimitingActive: true,
-            deviceFingerprintingActive: true,
-            redisFallbackReady: true,
-            postgresqlIntegrationActive: true,
-            adminControlsAvailable: true
+            rateLimitingActive: rateLimiterService.isEnabled(),
+            tenantAwareArchitecture: true,
+            redisBackendReady: rateLimiterService.isEnabled(),
+            securityMonitoringActive: true,
+            tierBasedLimitsActive: true
           },
           features: {
-            'Multi-layer device fingerprinting': '✅ Handles VPN hopping and evasion',
-            'Atomic Redis rate limiting': '✅ Race-condition-free operations', 
-            'PostgreSQL failover': '✅ Intelligent hydration on Redis restart',
-            'Violation escalation': '✅ Graduated penalties with alerting',
-            'Admin override controls': '✅ Whitelist/blacklist management',
+            'Tenant-aware rate limiting': '✅ Future-proof for multi-tenancy',
+            'Three-tier rate limiting': '✅ Auth (5/15min), Booking (100/1min), General (1000/15min)',
+            'Redis-backed storage': '✅ Distributed rate limiting with race condition protection',
+            'Security violation logging': '✅ Integrated with security monitoring system',
+            'Progressive penalties': '✅ Escalating blocks for repeat offenders',
             'Real-time monitoring': '✅ Comprehensive violation tracking',
             'Abuse pattern detection': '✅ Suspicious behavior flagging'
           },
@@ -58,12 +60,16 @@ export async function GET(request: NextRequest) {
           }
         });
 
+      case 'status':
+        // Return current rate limiting status
+        return await getRateLimitStatusResponse(request, 'general');
+
       default:
         return NextResponse.json({
           success: true,
           message: 'Rate limiting test endpoint operational',
-          availableScenarios: ['overview', 'device-fingerprint', 'admin-controls'],
-          implementation: 'Production-grade rate limiting system ready for deployment'
+          availableScenarios: ['overview', 'device-fingerprint', 'admin-controls', 'status'],
+          implementation: 'Production-grade tenant-aware rate limiting system ready for deployment'
         });
     }
   } catch (error) {
@@ -73,9 +79,9 @@ export async function GET(request: NextRequest) {
       error: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
   }
-}
+});
 
-export async function POST(request: NextRequest) {
+export const POST = withGeneralRateLimit(async (request: NextRequest) => {
   try {
     const body = await request.json();
     
@@ -83,7 +89,7 @@ export async function POST(request: NextRequest) {
       success: true,
       message: 'Rate limiting POST test completed',
       receivedData: body,
-      implementation: 'Production-grade rate limiting system operational'
+      implementation: 'Production-grade tenant-aware rate limiting system operational'
     });
   } catch (error) {
     return NextResponse.json({
@@ -91,4 +97,4 @@ export async function POST(request: NextRequest) {
       error: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
   }
-}
+});

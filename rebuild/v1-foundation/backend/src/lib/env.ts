@@ -63,6 +63,13 @@ const envSchema = z.object({
   RATE_LIMIT_REQUESTS: z.string().regex(/^\d+$/).default('100'),
   RATE_LIMIT_WINDOW_MS: z.string().regex(/^\d+$/).default('60000'),
   
+  // Tenant-aware rate limiting
+  RATE_LIMIT_TENANT_AWARE: z.enum(['true', 'false']).default('false'),
+  RATE_LIMIT_AUTH_REQUESTS: z.string().regex(/^\d+$/).default('5'),
+  RATE_LIMIT_AUTH_WINDOW_MS: z.string().regex(/^\d+$/).default('900000'),
+  RATE_LIMIT_BOOKING_REQUESTS: z.string().regex(/^\d+$/).default('100'),
+  RATE_LIMIT_BOOKING_WINDOW_MS: z.string().regex(/^\d+$/).default('60000'),
+  
   // Next.js settings
   NEXT_TELEMETRY_DISABLED: z.enum(['1', '0']).default('1'),
 });
@@ -138,6 +145,15 @@ export function getConfig(): {
   rateLimit: {
     requests: number;
     windowMs: number;
+    tenantAware: boolean;
+    auth: {
+      requests: number;
+      windowMs: number;
+    };
+    booking: {
+      requests: number;
+      windowMs: number;
+    };
   };
   logging: {
     level: string;
@@ -172,6 +188,15 @@ export function getConfig(): {
     rateLimit: {
       requests: parseInt(env.RATE_LIMIT_REQUESTS),
       windowMs: parseInt(env.RATE_LIMIT_WINDOW_MS),
+      tenantAware: env.RATE_LIMIT_TENANT_AWARE === 'true',
+      auth: {
+        requests: parseInt(env.RATE_LIMIT_AUTH_REQUESTS),
+        windowMs: parseInt(env.RATE_LIMIT_AUTH_WINDOW_MS),
+      },
+      booking: {
+        requests: parseInt(env.RATE_LIMIT_BOOKING_REQUESTS),
+        windowMs: parseInt(env.RATE_LIMIT_BOOKING_WINDOW_MS),
+      },
     },
     logging: {
       level: env.LOG_LEVEL,
