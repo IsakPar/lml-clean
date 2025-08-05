@@ -15,6 +15,7 @@ import { z } from 'zod';
 const envSchema = z.object({
   // Core application settings
   NODE_ENV: z.enum(['development', 'staging', 'production']),
+  PORT: z.string().regex(/^\d+$/).default('3001'),
   
   // Database connections (required)
   DATABASE_URL: z.string().startsWith('postgresql://'),
@@ -121,6 +122,7 @@ export function getConfig(): {
   isDevelopment: boolean;
   isStaging: boolean;
   isProduction: boolean;
+  port: number;
   database: {
     postgresUrl: string;
     mongoUri: string;
@@ -154,6 +156,7 @@ export function getConfig(): {
     isDevelopment: env.NODE_ENV === 'development',
     isStaging: env.NODE_ENV === 'staging', 
     isProduction: env.NODE_ENV === 'production',
+    port: parseInt(env.PORT) || 3001,
     database: {
       postgresUrl: env.DATABASE_URL,
       mongoUri: env.MONGODB_URI,
