@@ -254,3 +254,33 @@ export type NewBookingSeat = typeof bookingSeats.$inferInsert;
 
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
+
+// ================================================
+// SEAT LOCKS TABLE (REDIS FALLBACK)
+// ================================================
+
+export const seatLocks = pgTable(
+  'seat_locks',
+  {
+    seatId: varchar('seat_id', { length: 100 }).primaryKey(),
+    userId: varchar('user_id', { length: 100 }).notNull(),
+    sessionId: varchar('session_id', { length: 100 }).notNull(),
+    lockedAt: timestamp('locked_at', { withTimezone: true }).defaultNow().notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    showId: varchar('show_id', { length: 100 }).notNull(),
+    venueId: varchar('venue_id', { length: 100 }).notNull(),
+  },
+  (table) => ({
+    // Indexes for performance
+    userSessionIdx: index('idx_seat_locks_user_session').on(table.userId, table.sessionId),
+    expiresAtIdx: index('idx_seat_locks_expires_at').on(table.expiresAt),
+    showVenueIdx: index('idx_seat_locks_show_venue').on(table.showId, table.venueId),
+    
+    // Constraints
+    expiresAtFuture: check('seat_locks_expires_at_future', sql`expires_at > locked_at`),
+    ttlReasonable: check('seat_locks_ttl_reasonable', sql`expires_at <= locked_at + INTERVAL '1 hour'`),
+  })
+);
+
+export type SeatLock = typeof seatLocks.$inferSelect;
+export type NewSeatLock = typeof seatLocks.$inferInsert;
