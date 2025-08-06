@@ -33,24 +33,56 @@ import {
 // ================================================
 
 /**
- * Clear seat from all backends (Redis + PostgreSQL)
- * Ensures clean test isolation
+ * Clear seat from all backends (Redis + PostgreSQL) with verification
+ * Uses forceReleaseSeatLock for proper cleanup
  */
 async function clearSeatFromAllBackends(seatId: string): Promise<void> {
   try {
-    // Release from Redis (any user, any session)
-    await productionLockManager.releaseSeatLock(seatId, 'any', 'any');
+    console.log(`🧹 FORCE CLEARING seat ${seatId} from all backends...`);
     
-    // Force cleanup from PostgreSQL fallback table
+    // Step 1: Force release from Redis using admin override
+    const { forceReleaseSeatLock } = await import('@/lib/services/venue-layout/locking/seat-lock');
+    await forceReleaseSeatLock(seatId, 'test-cleanup-admin');
+    
+    // Step 2: Force cleanup from PostgreSQL fallback table
     const { sql } = await import('drizzle-orm');
     const { db } = await import('@/lib/db/postgres');
     const { seatLocks } = await import('@/lib/db/schema');
     
     await db.delete(seatLocks).where(sql`${seatLocks.seatId} = ${seatId}`);
     
-    console.log(`🧹 Cleared seat ${seatId} from all backends`);
+    // Step 3: Additional cleanup from PostgreSQL fallback
+    const { cleanupExpiredLocksPostgres } = await import('@/lib/services/venue-layout/locking/postgres-fallback');
+    await cleanupExpiredLocksPostgres();
+    
+    // Step 4: Verify cleanup worked (with retry)
+    let attempts = 0;
+    let isClean = false;
+    
+    while (attempts < 3 && !isClean) {
+      await new Promise(resolve => setTimeout(resolve, 150)); // 150ms wait
+      
+      const lockStatus = await productionLockManager.getSeatLockStatus(seatId);
+      isClean = !lockStatus.isLocked;
+      
+      if (!isClean) {
+        console.warn(`⚠️ Seat ${seatId} still locked after cleanup attempt ${attempts + 1}, retrying...`);
+        // Force release again with admin override
+        await forceReleaseSeatLock(seatId, `test-cleanup-retry-${attempts}`);
+        await db.delete(seatLocks).where(sql`${seatLocks.seatId} = ${seatId}`);
+      }
+      
+      attempts++;
+    }
+    
+    if (isClean) {
+      console.log(`✅ Successfully force-cleared seat ${seatId}`);
+    } else {
+      console.error(`❌ CRITICAL: Failed to clear seat ${seatId} after ${attempts} attempts with force release`);
+    }
+    
   } catch (error) {
-    console.warn(`⚠️ Failed to clear seat ${seatId}:`, error instanceof Error ? error.message : 'Unknown error');
+    console.error(`❌ CRITICAL ERROR clearing seat ${seatId}:`, error instanceof Error ? error.message : 'Unknown error');
   }
 }
 
@@ -869,9 +901,18 @@ export async function GET(request: NextRequest) {
         break;
 
       case 'full_suite':
-        // Fix #5: Global reset before full suite + sequential execution
-        console.log('🧹 Resetting all test seats for full suite...');
-        await resetTestSeats(['A1', 'A2', 'C1', 'C2', 'C3', 'D1', 'D2', 'E1', 'F1']);
+        // Fix #5: Aggressive global cleanup before full suite
+        console.log('🚨 AGGRESSIVE CLEANUP: Resetting all test seats for full suite...');
+        const allTestSeats = ['A1', 'A2', 'C1', 'C2', 'C3', 'D1', 'D2', 'E1', 'F1'];
+        
+        // Sequential cleanup with verification (more reliable than parallel)
+        for (const seatId of allTestSeats) {
+          await clearSeatFromAllBackends(seatId);
+        }
+        
+        // Additional wait to ensure all cleanup completes
+        console.log('⏳ Waiting for cleanup to fully complete...');
+        await new Promise(resolve => setTimeout(resolve, 500));
         
         // Run all tests sequentially with improved isolation
         const allResults = [
