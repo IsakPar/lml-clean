@@ -192,6 +192,8 @@ async function testBasicBookingFlow(): Promise<TestResult> {
       throw new Error(`Select failed: ${selectResult.error}`);
     }
 
+    await snapshotTracker.captureSnapshot(seatId, selectResult.newContext!, testId);
+
     // Step 2: Hold seat (acquire lock)
     const holdResult = await executeBookingTransition({
       context: selectResult.newContext!,
@@ -271,21 +273,50 @@ async function testRaceConditions(concurrentUsers: number = 20): Promise<TestRes
   const seatId = 'A1';
   
   try {
-    // Create concurrent booking attempts
+    // Create concurrent booking attempts (proper FSM flow: select → hold)
     const bookingPromises = Array.from({ length: concurrentUsers }, (_, i) => {
-      const context: BookingContext = {
-        seatId,
-        userId: `user-${i}`,
-        sessionId: `session-${i}`,
-        showId: 'show-race',
-        venueId: 'venue-race',
-        currentState: 'available',
-      };
+      return (async () => {
+        const context: BookingContext = {
+          seatId,
+          userId: `user-${i}`,
+          sessionId: `session-${i}`,
+          showId: 'show-race',
+          venueId: 'venue-race',
+          currentState: 'available',
+        };
 
-      return executeBookingTransition({
-        context,
-        action: 'hold',
-      });
+        try {
+          // Step 1: Select seat (available → selecting)
+          const selectResult = await executeBookingTransition({
+            context,
+            action: 'select',
+          });
+          
+          if (!selectResult.success) {
+            return { success: false, error: `Select failed: ${selectResult.error}`, userId: context.userId };
+          }
+
+          // Step 2: Hold seat (selecting → locked) - this is where contention happens
+          const holdResult = await executeBookingTransition({
+            context: selectResult.newContext!,
+            action: 'hold',
+          });
+
+          return { 
+            success: holdResult.success, 
+            error: holdResult.error, 
+            newContext: holdResult.newContext,
+            userId: context.userId,
+            conflictDetails: holdResult.conflictDetails 
+          };
+        } catch (error) {
+          return { 
+            success: false, 
+            error: error instanceof Error ? error.message : 'Unknown error',
+            userId: context.userId 
+          };
+        }
+      })();
     });
 
     // Execute all booking attempts simultaneously
@@ -298,11 +329,20 @@ async function testRaceConditions(concurrentUsers: number = 20): Promise<TestRes
     // Should have exactly 1 success and (concurrentUsers - 1) failures
     const isValid = successes.length === 1 && failures.length === (concurrentUsers - 1);
     
-    // Verify failure reasons are ownership conflicts
+    // Verify failure reasons are ownership conflicts (409-style conflicts)
     const conflictFailures = failures.filter(f => 
       f.error?.includes('locked by another user') || 
+      f.error?.includes('already locked') ||
+      f.error?.includes('lock already held') ||
       f.conflictDetails?.currentOwner
     );
+
+    // Enhanced analysis for debugging
+    const errorTypes = failures.reduce((acc: Record<string, number>, f) => {
+      const errorKey = f.error?.substring(0, 50) || 'unknown';
+      acc[errorKey] = (acc[errorKey] || 0) + 1;
+      return acc;
+    }, {});
 
     return {
       scenario: 'race_condition_stress',
@@ -313,9 +353,11 @@ async function testRaceConditions(concurrentUsers: number = 20): Promise<TestRes
         successes: successes.length,
         failures: failures.length,
         conflictFailures: conflictFailures.length,
-        winner: successes[0]?.newContext?.userId,
+        winner: successes[0]?.newContext?.userId || successes[0]?.userId,
         expectedOutcome: `1 success, ${concurrentUsers - 1} conflicts`,
         actualOutcome: `${successes.length} successes, ${failures.length} failures`,
+        errorTypes,
+        sampleErrors: failures.slice(0, 3).map(f => f.error),
       },
     };
 
@@ -355,10 +397,36 @@ async function testMultiSeatConcurrency(): Promise<TestResult> {
         };
 
         allBookingPromises.push(
-          executeBookingTransition({
-            context,
-            action: 'hold',
-          }).then(result => ({ seatId, userId: context.userId, result }))
+          (async () => {
+            try {
+              // Step 1: Select seat (available → selecting)
+              const selectResult = await executeBookingTransition({
+                context,
+                action: 'select',
+              });
+              
+              if (!selectResult.success) {
+                return { seatId, userId: context.userId, result: { success: false, error: `Select failed: ${selectResult.error}` } };
+              }
+
+              // Step 2: Hold seat (selecting → locked) - this is where contention happens
+              const holdResult = await executeBookingTransition({
+                context: selectResult.newContext!,
+                action: 'hold',
+              });
+
+              return { seatId, userId: context.userId, result: holdResult };
+            } catch (error) {
+              return { 
+                seatId, 
+                userId: context.userId, 
+                result: { 
+                  success: false, 
+                  error: error instanceof Error ? error.message : 'Unknown error' 
+                } 
+              };
+            }
+          })()
         );
       }
     });
@@ -405,7 +473,12 @@ async function testMultiSeatConcurrency(): Promise<TestResult> {
       scenario: 'multi_seat_concurrency',
       success: false,
       duration: Date.now() - startTime,
-      details: null,
+      details: {
+        seatIds,
+        usersPerSeat,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        phase: 'Execution failed before completion',
+      },
       errors: [error instanceof Error ? error.message : 'Unknown error'],
     };
   }
@@ -522,9 +595,19 @@ async function testTTLCleanupBehavior(): Promise<TestResult> {
       currentState: 'available',
     };
 
-    // Acquire lock with very short TTL (5 seconds for testing)
-    const holdResult = await executeBookingTransition({
+    // Step 1: Select seat (available → selecting)
+    const selectResult = await executeBookingTransition({
       context,
+      action: 'select',
+    });
+    
+    if (!selectResult.success) {
+      throw new Error(`Select failed: ${selectResult.error}`);
+    }
+
+    // Step 2: Acquire lock with short TTL (2 seconds for testing)
+    const holdResult = await executeBookingTransition({
+      context: selectResult.newContext!,
       action: 'hold',
     });
     
@@ -532,20 +615,19 @@ async function testTTLCleanupBehavior(): Promise<TestResult> {
       throw new Error(`Hold failed: ${holdResult.error}`);
     }
 
+    await snapshotTracker.captureSnapshot(seatId, holdResult.newContext!, testId);
+
     // Verify lock exists immediately
     const lockStatusBefore = await productionLockManager.getSeatLockStatus(seatId);
     if (!lockStatusBefore.isLocked) {
       throw new Error('Lock should exist immediately after acquisition');
     }
 
-    // Wait for TTL expiry (we'll simulate this by checking cleanup)
-    // In a real test, we'd wait for actual TTL, but for speed we'll call cleanup
-    await new Promise(resolve => setTimeout(resolve, 1000)); // Brief wait
+    // Wait for TTL expiry (minimum 3 seconds as per user requirement)
+    console.log('⏳ Waiting 3+ seconds for TTL expiry...');
+    await new Promise(resolve => setTimeout(resolve, 3500)); // 3.5 seconds wait
     
-    // Force cleanup (simulates TTL expiry)
-    // Note: This would normally happen automatically
-    
-    // Verify lock is cleaned up in both Redis and PostgreSQL
+    // Verify lock is cleaned up in both Redis and PostgreSQL after TTL expiry
     const lockStatusAfter = await productionLockManager.getSeatLockStatus(seatId);
     
     // Try to acquire the same seat with different user (should succeed if cleaned up)
@@ -558,8 +640,19 @@ async function testTTLCleanupBehavior(): Promise<TestResult> {
       currentState: 'available',
     };
 
-    const newHoldResult = await executeBookingTransition({
+    // Step 3: New user selects seat
+    const newSelectResult = await executeBookingTransition({
       context: newUserContext,
+      action: 'select',
+    });
+    
+    if (!newSelectResult.success) {
+      throw new Error(`New user select failed: ${newSelectResult.error}`);
+    }
+
+    // Step 4: New user tries to hold seat (should succeed if TTL cleanup worked)
+    const newHoldResult = await executeBookingTransition({
+      context: newSelectResult.newContext!,
       action: 'hold',
     });
 
