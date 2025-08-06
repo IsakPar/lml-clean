@@ -50,13 +50,13 @@ export {
   StripeEventDeduplicator,
   createStripeEventDeduplicator,
   type WebhookEventRecord 
-} from './legacy/event-deduplicator';
+} from './event-deduplicator';
 
 export { 
   StripeIdempotencyManager,
   createStripeIdempotencyManager,
   type IdempotencyResult 
-} from './legacy/idempotency-manager';
+} from './idempotency-manager';
 
 // ================================================
 // TODO: New modular exports (Phase A2+)
