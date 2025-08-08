@@ -6,7 +6,7 @@
  * Covers all error codes and classification scenarios
  */
 
-import { describe, it, expect } from '@jest/globals';
+// Jest globals available; avoid importing to sidestep type resolution
 import { 
   StripeErrorClassifier,
   createStripeErrorClassifier,

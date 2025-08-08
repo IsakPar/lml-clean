@@ -9,6 +9,7 @@
     "start": "next start -p ${PORT:-3001}",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
+    "migrate": "tsx scripts/run-migrations.ts",
     "dev:check": "tsx scripts/dev-check.ts",
     "dev:full": "pnpm run dev:check && pnpm run dev",
     "db:generate": "drizzle-kit generate:pg",
@@ -49,7 +50,8 @@
     "zod": "^3.22.0"
   },
   "devDependencies": {
-    "@types/jest": "^29.0.0",
+    "@jest/globals": "^30.0.5",
+    "@types/jest": "^29.5.14",
     "@types/node": "^20.19.9",
     "@types/pg": "^8.10.0",
     "@types/react": "^18.0.0",
