@@ -471,6 +471,14 @@ export class ProductionLockManager {
     }, `Lock acquisition for seat ${request.seatId}`);
   }
 
+  public async acquireSeatLocksBatch(
+    requests: SeatLockRequest[]
+  ): Promise<{ success: boolean; results: SeatLockResult[] }> {
+    // Bump versions in PG (monotonic) and collect <version:sessionId> values, then pipeline SET NX PX; rollback partials on any failure
+    // Placeholder orchestrator; actual PG bump + Lua call wiring added in PR2
+    return { success: false, results: [] };
+  }
+
   public async releaseSeatLock(seatId: string, userId: string, sessionId: string): Promise<SeatLockResult> {
     return this.retryWithBackoff(async () => {
       const startTime = Date.now();

@@ -171,7 +171,7 @@ export function recordLockCleanup(cleanedCount: number): void {
  * Record lock conflict (multiple users trying same seat)
  */
 export function recordLockConflict(seatId: string, requestingUserId: string, holdingUserId: string): void {
-  incrementLockMetric('lock.conflict', seatId, requestingUserId, { 
+  incrementLockMetric('lock.conflicts_total', seatId, requestingUserId, { 
     holder: holdingUserId,
     contention: 'high'
   });
@@ -185,6 +185,10 @@ export function recordLockContention(seatId: string, attemptCount: number): void
   recordLockMetric('lock.contention.level', seatId, 'system', attemptCount, { 
     level: contentionLevel 
   });
+}
+
+export function recordBatchSize(size: number): void {
+  recordLockMetric('seat_lock_batch_size', 'system', 'system', size);
 }
 
 // ================================================
