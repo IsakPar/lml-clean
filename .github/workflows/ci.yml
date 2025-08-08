@@ -1,0 +1,60 @@
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: lml_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd="pg_isready -U postgres" --health-interval=10s --health-timeout=5s --health-retries=5
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd="redis-cli ping || exit 1" --health-interval=5s --health-timeout=3s --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+          cache-dependency-path: rebuild/v1-foundation/backend/pnpm-lock.yaml
+      - name: Install
+        working-directory: rebuild/v1-foundation/backend
+        run: pnpm install --frozen-lockfile
+      - name: Env
+        working-directory: rebuild/v1-foundation/backend
+        run: |
+          cp ../env.example ../.env
+          echo "DATABASE_URL=postgres://postgres:postgres@localhost:5432/lml_test" >> ../.env
+          echo "REDIS_URL=redis://localhost:6379" >> ../.env
+          echo "LML_LOCK_PREFIX=lml:ci:${{ github.run_id }}" >> ../.env
+      - name: Migrate
+        working-directory: rebuild/v1-foundation/backend
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/lml_test
+        run: pnpm migrate
+      - name: Type check
+        working-directory: rebuild/v1-foundation/backend
+        run: pnpm run type-check
+      - name: Lint
+        working-directory: rebuild/v1-foundation/backend
+        run: pnpm run lint
+      - name: Tests
+        working-directory: rebuild/v1-foundation/backend
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/lml_test
+          REDIS_URL: redis://localhost:6379
+          LML_LOCK_PREFIX: lml:ci:${{ github.run_id }}
+        run: pnpm run test:ci
+
