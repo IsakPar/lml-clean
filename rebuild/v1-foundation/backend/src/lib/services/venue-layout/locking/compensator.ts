@@ -19,7 +19,8 @@ export async function runLockCompensatorOnce(opts: CompensatorOptions = {}): Pro
   let deleted = 0;
   try {
     do {
-      const [next, keys] = await redis.scan(cursor, { MATCH: 'lml:lock:seat:*', COUNT: scanCount });
+      const prefix = process.env.LML_LOCK_PREFIX || 'lml';
+      const [next, keys] = await redis.scan(cursor, { MATCH: `${prefix}:lock:seat:*`, COUNT: scanCount });
       cursor = next;
       if (keys.length === 0) continue;
       const pipe = redis.multi();
@@ -30,7 +31,9 @@ export async function runLockCompensatorOnce(opts: CompensatorOptions = {}): Pro
       const delPipe = redis.multi();
       let scheduled = 0;
       keys.forEach((key, i) => {
-        const ttl = Number(ttls?.[i]);
+        const tuple = ttls?.[i];
+        const ttl = Number(Array.isArray(tuple) ? tuple[1] : tuple);
+        // PTTL: -2 (no key), -1 (no TTL)
         if (!Number.isFinite(ttl) || ttl <= 0) {
           delPipe.del(key);
           scheduled++;
@@ -38,9 +41,9 @@ export async function runLockCompensatorOnce(opts: CompensatorOptions = {}): Pro
       });
       if (scheduled > 0) {
         const res = await delPipe.exec();
-        deleted += res?.filter((x) => x === 1 || x?.[1] === 1).length ?? 0;
+        deleted += res?.filter((x) => (Array.isArray(x) ? x[1] : x) === 1).length ?? 0;
         // Rate limit
-        await sleep(Math.ceil((scheduled / perSecond) * 1000));
+        await sleep(Math.max(5, Math.ceil((scheduled / perSecond) * 1000)));
       }
     } while (cursor !== '0');
   } finally {

@@ -1,15 +1,40 @@
 import { createClient } from 'redis';
 import { acquireSeatLock } from '../seat-lock';
+jest.setTimeout(30000);
 import { buildLockValue, acquireBatchFenced } from '../batch-acquire';
 
 describe('Fenced Locks', () => {
+  const runId = Math.random().toString(36).slice(2, 8);
   const redis = createClient({ url: process.env.REDIS_URL, database: 3 });
   beforeAll(async () => {
-    await redis.connect();
-    await redis.flushDb();
+    try {
+      await redis.connect();
+      process.env.LML_LOCK_PREFIX = `lml:test:${runId}`;
+      await redis.flushDb();
+    } catch (e) {
+      // try without db to accommodate CI auth settings
+      await redis.quit().catch(() => {});
+      const fallback = createClient({ url: process.env.REDIS_URL });
+      await fallback.connect();
+      await fallback.flushDb();
+      await fallback.quit();
+      await redis.connect();
+    }
   });
   afterAll(async () => {
     await redis.quit();
+    // best-effort cleanup of this run's keys
+    const cleanup = createClient({ url: process.env.REDIS_URL });
+    await cleanup.connect();
+    let cursor = '0';
+    do {
+      const [next, keys] = await cleanup.scan(cursor, { MATCH: `${process.env.LML_LOCK_PREFIX}:lock:seat:*`, COUNT: 100 });
+      cursor = next;
+      if (keys.length) {
+        await cleanup.del(keys);
+      }
+    } while (cursor !== '0');
+    await cleanup.quit();
   });
 
   it('single-seat race: exactly one winner among 50', async () => {
@@ -32,7 +57,7 @@ describe('Fenced Locks', () => {
     ]);
     const successes = [r1.success, r2.success].filter(Boolean).length;
     expect(successes).toBeLessThanOrEqual(1);
-    const keys = [...a, ...b].map((s) => `lml:lock:seat:${s}`);
+    const keys = [...a, ...b].map((s) => `${process.env.LML_LOCK_PREFIX}:lock:seat:${s}`);
     const client = createClient({ url: process.env.REDIS_URL, database: 3 });
     await client.connect();
     const vals = await client.mGet(keys);

@@ -1,11 +1,12 @@
 import { createClient, type RedisClientType } from 'redis';
 import { sql } from 'drizzle-orm';
 import { db } from '../../../db/postgres';
-import { getLockSettings } from '../../../lib/config';
+import { getLockSettings } from '../../../config';
 import { recordBatchSize, recordLockFailure } from './lock-metrics';
 
 function buildLockKey(seatId: string): string {
-  return `lml:lock:seat:${seatId}`;
+  const prefix = process.env.LML_LOCK_PREFIX || 'lml';
+  return `${prefix}:lock:seat:${seatId}`;
 }
 
 export function buildLockValue(version: number, sessionId: string): string {
@@ -53,7 +54,10 @@ export async function acquireBatchFenced(
   }
 
   const exec = await pipeline.exec();
-  const oks = exec?.map((r) => r === 'OK' || r?.[1] === 'OK') || [];
+  const oks = (exec || []).map((tuple: any) => {
+    const res = Array.isArray(tuple) ? tuple[1] : tuple;
+    return res === 'OK';
+  });
   const allOk = oks.length === seatIds.length && oks.every(Boolean);
 
   if (!allOk) {
@@ -62,12 +66,8 @@ export async function acquireBatchFenced(
     if (setIndexes.length > 0) {
       const KEYS = setIndexes.map((i) => keys[i]);
       const ARGV = setIndexes.map((i) => values[i]);
-      // Fallback: delete individually if script not loaded
-      const delPipe = redis.multi();
-      for (const idx of setIndexes) {
-        delPipe.del(keys[idx]);
-      }
-      await delPipe.exec();
+      const rollbackScript = "local deleted=0 for i=1,#KEYS do local k=KEYS[i] local expected=ARGV[i] local current=redis.call('GET',k) if current and current==expected then redis.call('DEL',k) deleted=deleted+1 end end return deleted";
+      await redis.eval(rollbackScript, { keys: KEYS, arguments: ARGV });
     }
     await redis.quit();
     recordLockFailure('batch', 'system', 'partial_failure');

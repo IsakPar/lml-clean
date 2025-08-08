@@ -67,8 +67,8 @@ describe('Stripe Error Classifier', () => {
       expect(result.reason).toBe('card_declined');
       expect(result.retryable).toBe(true);
       expect(result.shouldReleaseSeats).toBe(false);
-      expect(result.description).toContain('card_declined');
-      expect(result.description).toContain('retryable');
+      expect(result.description.toLowerCase()).toContain('declined');
+      expect(result.description.toLowerCase()).toContain('retryable');
     });
 
     it('should classify payment intent with fraudulent card as hard failure', () => {

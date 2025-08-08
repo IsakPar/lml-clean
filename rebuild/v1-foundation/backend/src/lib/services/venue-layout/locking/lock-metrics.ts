@@ -187,8 +187,8 @@ export function recordLockContention(seatId: string, attemptCount: number): void
   });
 }
 
-export function recordBatchSize(size: number): void {
-  recordLockMetric('seat_lock_batch_size', 'system', 'system', size);
+export function recordBatchSize(size: number, tags?: Record<string, string>): void {
+  recordLockMetric('seat_lock_batch_size', 'system', 'system', size, tags);
 }
 
 // ================================================
