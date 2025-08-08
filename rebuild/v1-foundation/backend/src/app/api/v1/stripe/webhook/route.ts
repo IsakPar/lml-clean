@@ -41,18 +41,26 @@ export async function POST(req: NextRequest) {
         VALUES (${evtId}, ${evtType}, ${event.livemode}, ${event.api_version || null}, ${sql.json(event)}, ${stripeCreatedAt})
       `);
     } catch (e: any) {
-      // Duplicate insert → ok, return 200
-      return NextResponse.json({ ok: true, duplicate: true });
+      // Duplicate insert → ok, return 200; otherwise bubble up
+      if (e && (e.code === '23505' || /duplicate key/i.test(String(e.message)))) {
+        try { (await import('../../../../lib/services/stripe/webhook-metrics')).recordWebhookDuplicate(evtId); } catch {}
+        return NextResponse.json({ ok: true, duplicate: true });
+      }
+      console.error('stripe_events insert error', e);
+      return new NextResponse('db error', { status: 500 });
     }
 
     // Replay window handling: store but do not enqueue if too old
     const isReplay = ageSeconds > REPLAY_WINDOW_S;
+    if (isReplay) {
+      try { (await import('../../../../lib/services/stripe/webhook-metrics')).recordWebhookReplay(evtId, ageSeconds); } catch {}
+    }
 
     if (!isReplay) {
       // Enqueue to outbox for worker (no inline FSM)
       await db.execute(sql`
-        INSERT INTO outbox_events (source, topic, payload)
-        VALUES ('stripe', ${evtType}, ${sql.json({ event_id: evtId })})
+        INSERT INTO outbox_events (type, aggregate_type, aggregate_id, payload)
+        VALUES (${evtType}, ${'stripe'}, ${evtId}, ${sql.json({ event_id: evtId })})
       `);
     }
 

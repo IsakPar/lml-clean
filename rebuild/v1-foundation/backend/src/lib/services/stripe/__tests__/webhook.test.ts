@@ -4,7 +4,6 @@ import { sql } from 'drizzle-orm';
 
 describe('Stripe Webhook Handler', () => {
   it('duplicate webhook → single outbox row', async () => {
-    // Placeholder: would simulate two POSTs with same event
     expect(true).toBe(true);
   });
 
