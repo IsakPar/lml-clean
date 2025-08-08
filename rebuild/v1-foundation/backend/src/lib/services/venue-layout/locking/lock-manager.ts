@@ -474,9 +474,14 @@ export class ProductionLockManager {
   public async acquireSeatLocksBatch(
     requests: SeatLockRequest[]
   ): Promise<{ success: boolean; results: SeatLockResult[] }> {
-    // Bump versions in PG (monotonic) and collect <version:sessionId> values, then pipeline SET NX PX; rollback partials on any failure
-    // Placeholder orchestrator; actual PG bump + Lua call wiring added in PR2
-    return { success: false, results: [] };
+    // Delegated to batch orchestrator in PR2
+    const { acquireBatchFenced } = await import('./batch-acquire');
+    const seatIds = requests.map(r => r.seatId);
+    const sessionId = requests[0]?.sessionId;
+    const r = await acquireBatchFenced(seatIds, sessionId);
+    if (!r.success) return { success: false, results: [] };
+    const results: SeatLockResult[] = (r.locks || []).map(l => ({ success: true }));
+    return { success: true, results };
   }
 
   public async releaseSeatLock(seatId: string, userId: string, sessionId: string): Promise<SeatLockResult> {

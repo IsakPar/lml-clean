@@ -48,4 +48,10 @@ jobs:
       - name: Lint
         working-directory: rebuild/v1-foundation/backend
         run: pnpm run lint
+      - name: Tests
+        working-directory: rebuild/v1-foundation/backend
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/lml_test
+          REDIS_URL: redis://localhost:6379
+        run: pnpm run test:ci
 

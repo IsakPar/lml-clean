@@ -356,6 +356,10 @@ export function resetLockMetrics(): void {
   console.log('🔄 Lock metrics reset');
 }
 
+export function recordOrdersTxnLockWaitMs(value: number, tags?: Record<string, string>): void {
+  recordLockMetric('orders_txn_lock_wait_ms', 'system', 'system', value, tags);
+}
+
 // ================================================
 // REAL-TIME ALERTING
 // ================================================
