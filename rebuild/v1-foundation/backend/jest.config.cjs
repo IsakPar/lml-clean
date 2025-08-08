@@ -11,6 +11,9 @@ module.exports = {
   setupFiles: ['<rootDir>/test/setup-env.ts'],
   maxWorkers: 2,
   testTimeout: 60000,
+  transformIgnorePatterns: [
+    '/node_modules/(?!(jose)/)',
+  ],
 };
 
 

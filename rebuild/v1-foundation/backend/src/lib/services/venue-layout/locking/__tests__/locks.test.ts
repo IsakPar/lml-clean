@@ -1,7 +1,8 @@
 import { createClient } from 'redis';
-import { acquireSeatLock } from '../seat-lock';
+import { acquireSeatLock, shutdownSeatLocking } from '../seat-lock';
 jest.setTimeout(30000);
 import { buildLockValue, acquireBatchFenced } from '../batch-acquire';
+import { closePostgresConnection } from '../../../../db/postgres';
 
 describe('Fenced Locks', () => {
   const runId = Math.random().toString(36).slice(2, 8);
@@ -35,6 +36,9 @@ describe('Fenced Locks', () => {
       }
     } while (cursor !== '0');
     await cleanup.quit();
+    // Close global clients created by modules under test
+    await shutdownSeatLocking();
+    await closePostgresConnection();
   });
 
   it('single-seat race: exactly one winner among 50', async () => {
