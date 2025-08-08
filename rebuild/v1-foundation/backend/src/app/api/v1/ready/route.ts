@@ -10,10 +10,12 @@ export async function GET() {
   const redis = await checkRedisHealth();
   let migrationsUpToDate = false;
   try {
-    // Ensure _migrations exists and at least one row or zero rows (no pending known). In PR1 scope, just presence is enough.
+    // Migrations table must exist and be consistent
     await db.execute(sql`CREATE TABLE IF NOT EXISTS _migrations (id SERIAL PRIMARY KEY, filename TEXT UNIQUE NOT NULL, checksum TEXT, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
-    const rows = await db.execute(sql`SELECT COUNT(*)::int AS cnt FROM _migrations`);
-    migrationsUpToDate = (rows as any)[0]?.cnt >= 0;
+    // Basic verification: at least one migration applied and no checksum NULL for applied rows
+    const rows = await db.execute(sql`SELECT COUNT(*)::int AS cnt, COUNT(*) FILTER (WHERE checksum IS NULL)::int AS nulls FROM _migrations`);
+    const row = (rows as any)[0];
+    migrationsUpToDate = row && row.cnt >= 1 && row.nulls === 0;
   } catch {
     migrationsUpToDate = false;
   }

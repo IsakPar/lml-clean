@@ -90,12 +90,17 @@ async function applyFile(filename: string) {
   const raw = fs.readFileSync(full, 'utf8');
   const text = preprocess(raw);
   const statements = splitStatements(text);
+  // Refuse DO/CREATE FUNCTION for now to avoid splitter pitfalls
+  if (/\bDO\s+\$\$/i.test(text) || /\bCREATE\s+FUNCTION\b/i.test(text)) {
+    throw new Error(`Migration ${filename} contains DO/CREATE FUNCTION blocks which are not supported by this migrator.`);
+  }
   const hasConcurrently = /CREATE\s+UNIQUE\s+INDEX\s+CONCURRENTLY/i.test(text);
   if (hasConcurrently && process.env.MIGRATE_CONCURRENT_INDEX === 'true' && statements.length !== 1) {
     throw new Error(`Migration ${filename} contains CONCURRENTLY and multiple statements. Split into separate files.`);
   }
   await sql.unsafe("SET lock_timeout = '2s'");
   await sql.unsafe("SET statement_timeout = '30s'");
+  console.log(`⏱️  Session timeouts set (lock_timeout=2s, statement_timeout=30s) for ${filename}`);
   for (const stmt of statements) {
     await sql.unsafe(stmt);
   }
