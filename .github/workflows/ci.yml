@@ -35,10 +35,12 @@ jobs:
       - name: Env
         working-directory: rebuild/v1-foundation/backend
         run: |
-          cp ../env.example ../.env
-          echo "DATABASE_URL=postgres://postgres:postgres@localhost:5432/lml_test" >> ../.env
-          echo "REDIS_URL=redis://localhost:6379" >> ../.env
-          echo "LML_LOCK_PREFIX=lml:ci:${{ github.run_id }}" >> ../.env
+          echo "DATABASE_URL=postgres://postgres:postgres@localhost:5432/lml_test" >> .env
+          echo "REDIS_URL=redis://localhost:6379" >> .env
+          echo "LML_LOCK_PREFIX=lml:ci:${{ github.run_id }}" >> .env
+          echo "FEATURE_REFRESH_TOKENS=true" >> ../.env
+          echo "JWT_SECRET=ci_test_secret_please_change_me_32_chars_min" >> ../.env
+          echo "AUTH_PREFIX=auth:ci:${{ github.run_id }}" >> ../.env
       - name: Migrate
         working-directory: rebuild/v1-foundation/backend
         env:
@@ -56,5 +58,8 @@ jobs:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/lml_test
           REDIS_URL: redis://localhost:6379
           LML_LOCK_PREFIX: lml:ci:${{ github.run_id }}
+          FEATURE_REFRESH_TOKENS: 'true'
+          JWT_SECRET: ci_test_secret_please_change_me_32_chars_min
+          AUTH_PREFIX: auth:ci:${{ github.run_id }}
         run: pnpm run test:ci
 

@@ -102,6 +102,7 @@ async function applyFile(filename: string) {
   await sql.unsafe("SET statement_timeout = '30s'");
   console.log(`⏱️  Session timeouts set (lock_timeout=2s, statement_timeout=30s) for ${filename}`);
   for (const stmt of statements) {
+    console.log(`➡️  ${path.basename(filename)} :: ${stmt.slice(0, 80).replace(/\s+/g,' ')}...`);
     await sql.unsafe(stmt);
   }
   const checksum = crypto.createHash('sha256').update(raw).digest('hex');
