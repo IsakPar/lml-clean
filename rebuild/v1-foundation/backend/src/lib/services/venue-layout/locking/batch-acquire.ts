@@ -67,6 +67,10 @@ export async function acquireBatchFenced(
     const res = Array.isArray(tuple) ? tuple[1] : tuple;
     return res === 'OK';
   });
+  // Safety: ensure arrays align
+  if (keys.length !== values.length || keys.length !== seatIds.length) {
+    throw new Error('BATCH_ROLLBACK_MISMATCH');
+  }
   const allOk = oks.length === seatIds.length && oks.every(Boolean);
 
   if (!allOk) {

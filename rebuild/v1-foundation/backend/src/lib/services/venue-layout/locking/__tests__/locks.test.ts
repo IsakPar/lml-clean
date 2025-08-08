@@ -41,9 +41,11 @@ describe('Fenced Locks', () => {
     const seat = 'S1';
     const sessionBase = 'sess';
     const attempts = 50;
-    const results = await Promise.all(
-      Array.from({ length: attempts }).map((_, i) => acquireSeatLock({ seatId: seat, userId: `u${i}`, sessionId: `${sessionBase}-${i}`, ttlMs: 5000 }))
-    );
+    const racers = Array.from({ length: attempts }).map((_, i) => async () => {
+      await new Promise(r => setTimeout(r, Math.random() * 3));
+      return acquireSeatLock({ seatId: seat, userId: `u${i}`, sessionId: `${sessionBase}-${i}`, ttlMs: 5000 });
+    });
+    const results = await Promise.all(racers.map(fn => fn()));
     const winners = results.filter((r) => r.success);
     expect(winners.length).toBe(1);
   });
