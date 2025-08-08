@@ -53,8 +53,11 @@ export async function runLockCompensatorOnce(opts: CompensatorOptions = {}): Pro
 }
 
 export function startLockCompensator(intervalMs: number = 300000) {
-  runLockCompensatorOnce().catch(() => {});
-  return setInterval(() => runLockCompensatorOnce().catch(() => {}), intervalMs);
+  if (process.env.FEATURE_FENCED_LOCKS !== 'true') return null;
+  const prefix = process.env.LML_LOCK_PREFIX || 'lml';
+  console.log(`🧹 Lock compensator enabled (prefix=${prefix}, interval=${intervalMs}ms)`);
+  runLockCompensatorOnce().catch((e) => console.warn('Compensator boot run error', e));
+  return setInterval(() => runLockCompensatorOnce().catch((e) => console.warn('Compensator tick error', e)), intervalMs);
 }
 
 

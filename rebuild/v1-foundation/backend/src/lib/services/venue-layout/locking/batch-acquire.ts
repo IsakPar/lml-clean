@@ -23,15 +23,24 @@ export async function acquireBatchFenced(
   const ttlMs = getLockSettings().ttlSelectingMs;
   recordBatchSize(seatIds.length);
 
-  // 1) Monotonic bump and fetch versions inside a single transaction for all seats
+  // 1) Monotonic bump and fetch versions inside a single transaction for all seats (two statements)
   const versions: Record<string, number> = {};
   await db.transaction(async (tx) => {
     await tx.execute(sql`SET LOCAL statement_timeout = '2s'`);
-    for (const seatId of seatIds) {
-      await tx.execute(sql`INSERT INTO seat_lock_versions (seat_id, version) VALUES (${seatId}, 0) ON CONFLICT (seat_id) DO NOTHING`);
-      const rows = await tx.execute(sql`UPDATE seat_lock_versions SET version = version + 1, updated_at = NOW() WHERE seat_id = ${seatId} RETURNING version`);
-      const row = (rows as any)[0];
-      versions[seatId] = Number(row.version);
+    // Insert missing rows in one statement
+    const insertValues = sql.join(seatIds.map((id) => sql`(${id}, 0)`), sql`, `);
+    await tx.execute(sql`INSERT INTO seat_lock_versions (seat_id, version) VALUES ${insertValues} ON CONFLICT (seat_id) DO NOTHING`);
+    // Bump all in one update using VALUES list
+    const valueList = sql.join(seatIds.map((id) => sql`(${id})`), sql`, `);
+    const bumped = await tx.execute(sql`
+      UPDATE seat_lock_versions v
+      SET version = v.version + 1, updated_at = NOW()
+      FROM (VALUES ${valueList}) AS s(seat_id)
+      WHERE v.seat_id = s.seat_id
+      RETURNING v.seat_id, v.version
+    `);
+    for (const row of bumped as any[]) {
+      versions[row.seat_id] = Number(row.version);
     }
   });
 
