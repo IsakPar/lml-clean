@@ -12,4 +12,20 @@ export function getWebhookMetrics() {
   return { ...counters };
 }
 
+export function recordBadSignature() {
+  counters['webhook_bad_sig_total'] = (counters['webhook_bad_sig_total'] || 0) + 1;
+}
+
+export function recordBadContentType(v: string) {
+  counters['webhook_bad_content_type_total'] = (counters['webhook_bad_content_type_total'] || 0) + 1;
+}
+
+export function recordOversize(n: number) {
+  counters['webhook_oversize_total'] = (counters['webhook_oversize_total'] || 0) + 1;
+}
+
+export function recordLivemodeMismatch() {
+  counters['webhook_livemode_mismatch_total'] = (counters['webhook_livemode_mismatch_total'] || 0) + 1;
+}
+
 

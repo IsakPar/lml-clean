@@ -10,6 +10,7 @@ export const config = { api: { bodyParser: false } } as any;
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', { apiVersion: '2024-06-20' });
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
 const REPLAY_WINDOW_S = parseInt(process.env.STRIPE_REPLAY_WINDOW_S || '86400');
+const MAX_BODY_BYTES = parseInt(process.env.STRIPE_MAX_WEBHOOK_BYTES || '262144'); // 256 KB
 
 async function readRawBody(req: NextRequest): Promise<Buffer> {
   const arrayBuffer = await req.arrayBuffer();
@@ -18,12 +19,23 @@ async function readRawBody(req: NextRequest): Promise<Buffer> {
 
 export async function POST(req: NextRequest) {
   try {
+    // Content-Type & size checks
+    const ctype = (req.headers.get('content-type') || '').toLowerCase();
+    if (!ctype.includes('application/json')) {
+      try { (await import('../../../../lib/services/stripe/webhook-metrics')).recordBadContentType(ctype); } catch {}
+      return new NextResponse('unsupported media type', { status: 415 });
+    }
     const sig = req.headers.get('stripe-signature') || '';
     const raw = await readRawBody(req);
+    if (raw.byteLength > MAX_BODY_BYTES) {
+      try { (await import('../../../../lib/services/stripe/webhook-metrics')).recordOversize(raw.byteLength); } catch {}
+      return new NextResponse('payload too large', { status: 413 });
+    }
     let event: Stripe.Event;
     try {
-      event = stripe.webhooks.constructEvent(raw, sig, webhookSecret);
+      event = stripe.webhooks.constructEvent(raw, sig, webhookSecret, { tolerance: 300 });
     } catch (err) {
+      try { (await import('../../../../lib/services/stripe/webhook-metrics')).recordBadSignature(); } catch {}
       return new NextResponse('signature verification failed', { status: 400 });
     }
 
@@ -57,13 +69,27 @@ export async function POST(req: NextRequest) {
     }
 
     if (!isReplay) {
+      // Optional livemode guard in non-prod (log only)
+      if (process.env.NODE_ENV !== 'production' && event.livemode) {
+        try { (await import('../../../../lib/services/stripe/webhook-metrics')).recordLivemodeMismatch(); } catch {}
+      }
       // Enqueue to outbox for worker (no inline FSM)
       await db.execute(sql`
         INSERT INTO outbox_events (type, aggregate_type, aggregate_id, payload)
-        VALUES (${evtType}, ${'stripe'}, ${evtId}, ${sql.json({ event_id: evtId })})
+        VALUES (${evtType}, ${'stripe'}, ${evtId}, ${sql.json({ event_id: evtId, type: evtType, created: stripeCreatedAt.toISOString(), account: (event as any).account || null })})
       `);
     }
 
+    const line = {
+      event_id: evtId,
+      type: evtType,
+      livemode: event.livemode,
+      age_s: ageSeconds,
+      duplicate: false,
+      replay: isReplay,
+      enqueued: !isReplay
+    };
+    console.log('stripe_webhook', JSON.stringify(line));
     return NextResponse.json({ ok: true, enqueued: !isReplay, replay: isReplay });
   } catch (error) {
     return new NextResponse('webhook error', { status: 500 });
