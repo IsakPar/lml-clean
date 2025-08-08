@@ -28,6 +28,7 @@ jobs:
         with:
           node-version: 20
           cache: 'pnpm'
+          cache-dependency-path: rebuild/v1-foundation/backend/pnpm-lock.yaml
       - name: Install
         working-directory: rebuild/v1-foundation/backend
         run: pnpm install --frozen-lockfile
