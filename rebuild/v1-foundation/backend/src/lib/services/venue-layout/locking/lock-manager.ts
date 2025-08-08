@@ -471,6 +471,19 @@ export class ProductionLockManager {
     }, `Lock acquisition for seat ${request.seatId}`);
   }
 
+  public async acquireSeatLocksBatch(
+    requests: SeatLockRequest[]
+  ): Promise<{ success: boolean; results: SeatLockResult[] }> {
+    // Delegated to batch orchestrator in PR2
+    const { acquireBatchFenced } = await import('./batch-acquire');
+    const seatIds = requests.map(r => r.seatId);
+    const sessionId = requests[0]?.sessionId;
+    const r = await acquireBatchFenced(seatIds, sessionId);
+    if (!r.success) return { success: false, results: [] };
+    const results: SeatLockResult[] = (r.locks || []).map(l => ({ success: true }));
+    return { success: true, results };
+  }
+
   public async releaseSeatLock(seatId: string, userId: string, sessionId: string): Promise<SeatLockResult> {
     return this.retryWithBackoff(async () => {
       const startTime = Date.now();
