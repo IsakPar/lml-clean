@@ -79,7 +79,8 @@ async function getLockingRedisClient() {
  * Generate standardized lock key for a seat
  */
 function getSeatLockKey(seatId: string): string {
-  return `lock:seat:${seatId}`;
+  const prefix = process.env.LML_LOCK_PREFIX || 'lml';
+  return `${prefix}:lock:seat:${seatId}`;
 }
 
 /**

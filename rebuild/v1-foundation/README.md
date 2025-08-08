@@ -36,6 +36,23 @@ pnpm install
 pnpm run dev
 ```
 
+### Migrations (local & CI)
+```bash
+# Create a fresh dev DB and apply migrations 009..013 lexically
+cd backend
+export DATABASE_URL=postgresql://localhost:5432/lml_dev
+pnpm migrate
+
+# Re-run is idempotent; migrator records filename + checksum in _migrations
+# Production note: set MIGRATE_CONCURRENT_INDEX=true to keep CREATE INDEX CONCURRENTLY
+```
+
+Notes
+- Zero-downtime: current migrations are additive (tables/indexes only); no destructive changes.
+- Drift detection: migrator stores SHA-256 checksum per file and fails if file changes after apply.
+- Timeouts: migrator sets lock_timeout=2s and statement_timeout=30s to avoid hanging builds.
+- Guardrails: files with CREATE INDEX CONCURRENTLY must contain only that statement when MIGRATE_CONCURRENT_INDEX=true.
+
 ### iOS Development
 ```bash
 cd ios/

@@ -6,7 +6,7 @@
  * Covers all edge cases and error conditions
  */
 
-import { describe, it, expect } from '@jest/globals';
+// Jest globals available; avoid imports
 import { 
   StateValidator,
   createStateValidator,
