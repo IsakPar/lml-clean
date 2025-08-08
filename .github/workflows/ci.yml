@@ -37,6 +37,7 @@ jobs:
           cp ../env.example ../.env
           echo "DATABASE_URL=postgres://postgres:postgres@localhost:5432/lml_test" >> ../.env
           echo "REDIS_URL=redis://localhost:6379" >> ../.env
+          echo "LML_LOCK_PREFIX=lml:ci:${{ github.run_id }}" >> ../.env
       - name: Migrate
         working-directory: rebuild/v1-foundation/backend
         env:
@@ -53,5 +54,6 @@ jobs:
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/lml_test
           REDIS_URL: redis://localhost:6379
+          LML_LOCK_PREFIX: lml:ci:${{ github.run_id }}
         run: pnpm run test:ci
 
