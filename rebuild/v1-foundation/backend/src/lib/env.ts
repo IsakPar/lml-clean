@@ -247,6 +247,15 @@ export function logEnvironmentStatus(): void {
     const locks = getLockSettings();
     const webhook = getWebhookSettings();
     console.log('\n🚩 Feature Flags (boot):', JSON.stringify(flags));
+    // Also echo env-style names once for clarity
+    console.log('🚩 Feature Env (boot):', JSON.stringify({
+      FEATURE_FENCED_LOCKS: process.env.FEATURE_FENCED_LOCKS ?? 'false',
+      FEATURE_FENCED_LOCKS_BATCH: process.env.FEATURE_FENCED_LOCKS_BATCH ?? 'false',
+      FEATURE_STRIPE_OUTBOX: process.env.FEATURE_STRIPE_OUTBOX ?? 'false',
+      FEATURE_OUTBOX_WORKER: process.env.FEATURE_OUTBOX_WORKER ?? 'false',
+      FEATURE_TXN_FSM: process.env.FEATURE_TXN_FSM ?? 'false',
+      FEATURE_REFRESH_TOKENS: process.env.FEATURE_REFRESH_TOKENS ?? 'false',
+    }));
     console.log('🔒 Lock Settings:', JSON.stringify(locks));
     console.log('📬 Webhook Settings:', JSON.stringify(webhook));
   } catch (_) {

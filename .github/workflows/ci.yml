@@ -45,4 +45,7 @@ jobs:
       - name: Type check
         working-directory: rebuild/v1-foundation/backend
         run: pnpm run type-check
+      - name: Lint
+        working-directory: rebuild/v1-foundation/backend
+        run: pnpm run lint
 
