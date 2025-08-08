@@ -6,7 +6,7 @@
  * Ensures config extraction didn't break anything
  */
 
-import { describe, it, expect } from '@jest/globals';
+// Jest globals are available via ts-jest; do not import from '@jest/globals' to avoid tsconfig type issues
 import { 
   WEBHOOK_CONFIG, 
   IDEMPOTENCY_CONFIG, 

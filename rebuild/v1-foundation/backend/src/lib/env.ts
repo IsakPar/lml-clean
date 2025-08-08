@@ -238,6 +238,20 @@ export function checkRequiredServices(): {
 
 export function logEnvironmentStatus(): void {
   const config = getConfig();
+  // Feature flags boot line
+  try {
+    // Lazy import to avoid cycle
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { getFeatureFlags, getLockSettings, getWebhookSettings } = require('./config');
+    const flags = getFeatureFlags();
+    const locks = getLockSettings();
+    const webhook = getWebhookSettings();
+    console.log('\n🚩 Feature Flags (boot):', JSON.stringify(flags));
+    console.log('🔒 Lock Settings:', JSON.stringify(locks));
+    console.log('📬 Webhook Settings:', JSON.stringify(webhook));
+  } catch (_) {
+    // no-op
+  }
   const services = checkRequiredServices();
   
   console.log('\n🔧 Environment Configuration:');
