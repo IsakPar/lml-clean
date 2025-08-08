@@ -60,6 +60,23 @@ interface AppConfig {
     enableCors: boolean;
     trustedProxies: string[];
   };
+  features?: {
+    FENCED_LOCKS: boolean;
+    FENCED_LOCKS_BATCH: boolean;
+    STRIPE_OUTBOX: boolean;
+    OUTBOX_WORKER: boolean;
+    TXN_FSM: boolean;
+    REFRESH_TOKENS: boolean;
+  };
+  locks?: {
+    ttlSelectingMs: number;
+    ttlReservedMs: number;
+    maxTtlMs: number;
+  };
+  webhook?: {
+    maxBodyBytes: number;
+    replayWindowSeconds: number;
+  };
 }
 
 // ================================================
@@ -113,6 +130,23 @@ const developmentConfig: AppConfig = {
     enableRateLimit: false,
     enableCors: true,
     trustedProxies: [],
+  },
+  features: {
+    FENCED_LOCKS: false,
+    FENCED_LOCKS_BATCH: false,
+    STRIPE_OUTBOX: false,
+    OUTBOX_WORKER: false,
+    TXN_FSM: false,
+    REFRESH_TOKENS: false,
+  },
+  locks: {
+    ttlSelectingMs: 180000,
+    ttlReservedMs: 900000,
+    maxTtlMs: 1200000,
+  },
+  webhook: {
+    maxBodyBytes: 262144,
+    replayWindowSeconds: 86400,
   },
 };
 
@@ -168,6 +202,23 @@ const stagingConfig: AppConfig = {
     enableCors: true,
     trustedProxies: ['127.0.0.1', '::1'],
   },
+  features: {
+    FENCED_LOCKS: false,
+    FENCED_LOCKS_BATCH: false,
+    STRIPE_OUTBOX: false,
+    OUTBOX_WORKER: false,
+    TXN_FSM: false,
+    REFRESH_TOKENS: false,
+  },
+  locks: {
+    ttlSelectingMs: 180000,
+    ttlReservedMs: 900000,
+    maxTtlMs: 1200000,
+  },
+  webhook: {
+    maxBodyBytes: 262144,
+    replayWindowSeconds: 86400,
+  },
 };
 
 const productionConfig: AppConfig = {
@@ -222,6 +273,23 @@ const productionConfig: AppConfig = {
     enableCors: true,
     trustedProxies: ['127.0.0.1', '::1'], // Add production proxy IPs
   },
+  features: {
+    FENCED_LOCKS: false,
+    FENCED_LOCKS_BATCH: false,
+    STRIPE_OUTBOX: false,
+    OUTBOX_WORKER: false,
+    TXN_FSM: false,
+    REFRESH_TOKENS: false,
+  },
+  locks: {
+    ttlSelectingMs: 180000,
+    ttlReservedMs: 900000,
+    maxTtlMs: 1200000,
+  },
+  webhook: {
+    maxBodyBytes: 262144,
+    replayWindowSeconds: 86400,
+  },
 };
 
 // ================================================
@@ -274,6 +342,32 @@ export function getRateLimitConfig() {
 
 export function getSecurityConfig() {
   return getAppConfig().security;
+}
+
+export function getFeatureFlags() {
+  return getAppConfig().features ?? {
+    FENCED_LOCKS: false,
+    FENCED_LOCKS_BATCH: false,
+    STRIPE_OUTBOX: false,
+    OUTBOX_WORKER: false,
+    TXN_FSM: false,
+    REFRESH_TOKENS: false,
+  };
+}
+
+export function getLockSettings() {
+  return getAppConfig().locks ?? {
+    ttlSelectingMs: 180000,
+    ttlReservedMs: 900000,
+    maxTtlMs: 1200000,
+  };
+}
+
+export function getWebhookSettings() {
+  return getAppConfig().webhook ?? {
+    maxBodyBytes: 262144,
+    replayWindowSeconds: 86400,
+  };
 }
 
 export function getDatabaseConfig() {
